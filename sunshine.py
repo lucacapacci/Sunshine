@@ -3,7 +3,15 @@ import argparse
 import os
 
 VERSION = "0.9"
-NAME= "CycloneChart"
+NAME = "Sunshine"
+
+PREFERRED_VULNERABILITY_RATING_METHODS_ORDER = ["CVSSv4",
+                                                "CVSSv31"
+                                                "CVSSv3"
+                                                "CVSSv2"
+                                                "OWASP"
+                                                "SSVC"
+                                                "other"]
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -85,6 +93,7 @@ window.addEventListener('resize', myChart.resize);
 
 
 def parse_file(input_file_path):
+    print("Parsing input file...")
     with open(input_file_path, 'r') as file:
         data = json.load(file)
 
@@ -96,6 +105,8 @@ def parse_file(input_file_path):
                          "type": component["type"],
                          "depends_on": set(),
                          "dependency_of": set(),
+                         "vulnerabilities": set(),
+                         "max_vulnerability_severity": None,
                          "visited": False}
 
         if "bom-ref" in component:
@@ -122,7 +133,21 @@ def parse_file(input_file_path):
 
     if "vulnerabilities" in data:
         for vulnerability in data["vulnerabilities"]:
-            break
+            vuln_id = vulnerability["id"]
+
+            vuln_rating = None
+            available_rating_methods = set()
+            for rating in vulnerability["ratings"]:
+                available_rating_methods.add(rating["method"])
+
+            # TODO qui scelgo il metodo di rating che mi piace di più e poi estraggo i suoi valori
+
+            for affects in vulnerability["affects"]:
+                bom_ref = affects["ref"]
+                if bom_ref not in components:
+                    print(f"WARNING: 'ref' '{bom_ref}' is used in 'vulnerabilities' but it's not declared in 'components'. Skipping.")
+                    continue
+                # TODO qui associo la vuln al componente
 
     return components
 
@@ -194,22 +219,27 @@ def main(input_file_path, output_file_path):
         print(f"File does not exist: '{input_file_path}'")
         exit()
 
-    components = parse_file(input_file_path)
+    try:
+        components = parse_file(input_file_path)
+    except Exception as e:
+        print("Error parsing input file!")
+        exit()
 
     echart_data = build_echarts_data(components)
     double_check_if_all_components_were_taken_into_account(components, echart_data)
     
     html_content = HTML_TEMPLATE.replace("DATA_HERE", json.dumps(echart_data, indent=2))
     write_output_file(html_content, output_file_path)
+    print("Done.")
         
 
 
 if __name__ == "__main__":
     print(f'''
-     ▗▄▄▖▗▖  ▗▖▗▄▄▖▗▖    ▗▄▖ ▗▖  ▗▖▗▄▄▄▖ ▗▄▄▖▗▖ ▗▖ ▗▄▖ ▗▄▄▖▗▄▄▄▖
-    ▐▌    ▝▚▞▘▐▌   ▐▌   ▐▌ ▐▌▐▛▚▖▐▌▐▌   ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▌ ▐▌ █  
-    ▐▌     ▐▌ ▐▌   ▐▌   ▐▌ ▐▌▐▌ ▝▜▌▐▛▀▀▘▐▌   ▐▛▀▜▌▐▛▀▜▌▐▛▀▚▖ █  
-    ▝▚▄▄▖  ▐▌ ▝▚▄▄▖▐▙▄▄▖▝▚▄▞▘▐▌  ▐▌▐▙▄▄▖▝▚▄▄▖▐▌ ▐▌▐▌ ▐▌▐▌ ▐▌ █  v{VERSION}
+ ▗▄▄▖▗▖ ▗▖▗▖  ▗▖ ▗▄▄▖▗▖ ▗▖▗▄▄▄▖▗▖  ▗▖▗▄▄▄▖
+▐▌   ▐▌ ▐▌▐▛▚▖▐▌▐▌   ▐▌ ▐▌  █  ▐▛▚▖▐▌▐▌   
+ ▝▀▚▖▐▌ ▐▌▐▌ ▝▜▌ ▝▀▚▖▐▛▀▜▌  █  ▐▌ ▝▜▌▐▛▀▀▘
+▗▄▄▞▘▝▚▄▞▘▐▌  ▐▌▗▄▄▞▘▐▌ ▐▌▗▄█▄▖▐▌  ▐▌▐▙▄▄▖ v{VERSION}
     ''')
 
     parser = argparse.ArgumentParser(description=f"{NAME}: actionable CycloneDX visualization")
