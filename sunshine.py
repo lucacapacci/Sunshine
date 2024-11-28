@@ -1,0 +1,230 @@
+import json
+import argparse
+import os
+
+VERSION = "0.9"
+NAME= "CycloneChart"
+
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+    <head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">  
+      <title>SBOM</title>
+      <style>
+* {
+  margin: 0;
+  padding: 0;
+}
+#chart-container {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+}
+      </style>
+    </head>
+    <body>
+      <div id="chart-container"></div>
+      <script src="https://fastly.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+      <script type="text/javascript">
+var dom = document.getElementById('chart-container');
+var myChart = echarts.init(dom, null, {
+  renderer: 'canvas',
+  useDirtyRect: false
+});
+var app = {};
+
+var option;
+
+const item1 = {
+  color: '#F54F4A'
+};
+const item2 = {
+  color: '#FF8C75'
+};
+const item3 = {
+  color: '#FFB499'
+};
+const data = DATA_HERE;
+
+
+option = {
+  tooltip: {
+        formatter: function(params) {
+            return `${params.name}`;
+        },
+    },
+  series: {
+    radius: ['15%', '80%'],
+    type: 'sunburst',
+    sort: undefined,
+    emphasis: {
+      focus: 'ancestor'
+    },
+    data: data,
+    label: {
+      rotate: 'radial',
+      show: false
+    },
+    levels: [],
+    itemStyle: {
+      color: '#7dd491',
+      borderWidth: 2
+    }
+  }
+};
+
+if (option && typeof option === 'object') {
+  myChart.setOption(option);
+}
+
+window.addEventListener('resize', myChart.resize);
+      </script>
+    </body>
+</html>
+"""
+
+
+def parse_file(input_file_path):
+    with open(input_file_path, 'r') as file:
+        data = json.load(file)
+
+    components = {}
+
+    for component in data["components"]:
+        new_component = {"name": component["name"],
+                         "version": component["version"] if "version" in component else "-",
+                         "type": component["type"],
+                         "depends_on": set(),
+                         "dependency_of": set(),
+                         "visited": False}
+
+        if "bom-ref" in component:
+            bom_ref = component["bom-ref"]
+        else:
+            bom_ref = f"{hash(json.dumps(new_component, sort_keys=True))}"
+
+        components[bom_ref] = new_component
+
+
+    if "dependencies" in data:
+        for dependency in data["dependencies"]:
+            bom_ref = dependency["ref"]
+            if bom_ref not in components:
+                print(f"WARNING: 'ref' '{bom_ref}' is used in 'dependencies' but it's not declared in 'components'. Skipping.")
+                continue
+            if "dependsOn" in dependency:
+                for depends_on in dependency["dependsOn"]:
+                    if depends_on not in components:
+                        print(f"WARNING: 'dependsOn' '{depends_on}' is used in 'dependencies' but it's not declared in 'components'. Skipping.")
+                        continue
+                    components[bom_ref]["depends_on"].add(depends_on)
+                    components[depends_on]["dependency_of"].add(bom_ref)
+
+    if "vulnerabilities" in data:
+        for vulnerability in data["vulnerabilities"]:
+            break
+
+    return components
+
+
+def get_children(components, component, parents):
+    children = []
+    value = 0
+    for depends_on in component["depends_on"]:
+        child_name = f'{components[depends_on]["name"]} <b>{components[depends_on]["version"]}</b>'
+        child_component = components[depends_on]
+        child_component["visited"] = True
+        if depends_on not in parents:  # this is done to avoid infinite recursion in case of circular dependencies
+            parents.append(depends_on)
+            child_children, children_value = get_children(components, child_component, parents)
+            value += children_value
+            children.append({"name": child_name,
+                             "children": child_children,
+                             "value": children_value})
+        else:
+            value += 1
+            children.append({"name": child_name,
+                             "children": [],
+                             "value": 1})
+
+    if value == 0:
+        value = 1
+
+    return children, value
+
+
+def build_echarts_data(components):
+    data = []
+
+    for bom_ref, component in components.items():
+        if len(component["dependency_of"]) != 0:
+            continue
+
+        component["visited"] = True
+        parents = [bom_ref]
+        root_name = f'{component["name"]} <b>{component["version"]}</b>'
+        root_children, root_value = get_children(components, component, parents)
+
+        new_element = {"name": root_name,
+                       "children": root_children,
+                       "value": root_value}
+        data.append(new_element)
+
+    return data
+
+
+def double_check_if_all_components_were_taken_into_account(components, echart_data):
+    # this should never happen, we make this double check just to be sure
+    for bom_ref, component in components.items():
+        if component["visited"] is False:
+            name = f'{component["name"]} <b>{component["version"]}</b>'
+            new_element = {"name": name,
+                           "children": [],
+                           "value": 1}
+            echart_data.append(new_element)
+
+
+def write_output_file(html_content, output_file_path):
+    with open(output_file_path, "w") as text_file:
+        text_file.write(html_content)
+
+
+def main(input_file_path, output_file_path):
+    if not os.path.exists(input_file_path):
+        print(f"File does not exist: '{input_file_path}'")
+        exit()
+
+    components = parse_file(input_file_path)
+
+    echart_data = build_echarts_data(components)
+    double_check_if_all_components_were_taken_into_account(components, echart_data)
+    
+    html_content = HTML_TEMPLATE.replace("DATA_HERE", json.dumps(echart_data, indent=2))
+    write_output_file(html_content, output_file_path)
+        
+
+
+if __name__ == "__main__":
+    print(f'''
+     ▗▄▄▖▗▖  ▗▖▗▄▄▖▗▖    ▗▄▖ ▗▖  ▗▖▗▄▄▄▖ ▗▄▄▖▗▖ ▗▖ ▗▄▖ ▗▄▄▖▗▄▄▄▖
+    ▐▌    ▝▚▞▘▐▌   ▐▌   ▐▌ ▐▌▐▛▚▖▐▌▐▌   ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▌ ▐▌ █  
+    ▐▌     ▐▌ ▐▌   ▐▌   ▐▌ ▐▌▐▌ ▝▜▌▐▛▀▀▘▐▌   ▐▛▀▜▌▐▛▀▜▌▐▛▀▚▖ █  
+    ▝▚▄▄▖  ▐▌ ▝▚▄▄▖▐▙▄▄▖▝▚▄▞▘▐▌  ▐▌▐▙▄▄▖▝▚▄▄▖▐▌ ▐▌▐▌ ▐▌▐▌ ▐▌ █  v{VERSION}
+    ''')
+
+    parser = argparse.ArgumentParser(description=f"{NAME}: actionable CycloneDX visualization")
+    parser.add_argument("-v", "--version", help="show program version", action="store_true")
+    parser.add_argument("-i", "--input", help="path of input CycloneDX file")
+    parser.add_argument("-o", "--output", help="path of output HTML file")
+    args = parser.parse_args()
+
+    if args.version:
+        exit()
+
+    if not args.input or not args.output:
+        parser.print_help()
+        exit()
+
+    input_file_path = args.input
+    output_file_path = args.output
+    main(input_file_path, output_file_path)
