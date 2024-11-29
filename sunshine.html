@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SBOM Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+        #chart-container {
+            position: relative;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #file-input {
+            margin: 20px;
+        }
+    </style>
+    <script src="https://fastly.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+</head>
+<body>
+    <input type="file" id="file-input" accept=".json">
+    <div id="chart-container"></div>
+
+    <script>
+        document.getElementById('file-input').addEventListener('change', handleFile);
+
+        function handleFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    const components = parseFile(data);
+                    const echartData = buildEchartsData(components);
+                    renderChart(echartData);
+                } catch (error) {
+                    console.error("Error processing file:", error);
+                    alert("Invalid file format.");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function parseFile(data) {
+            const components = {};
+            data.components.forEach(component => {
+                const bomRef = component["bom-ref"] || JSON.stringify(component);
+                components[bomRef] = {
+                    name: component.name,
+                    version: component.version || "-",
+                    type: component.type,
+                    depends_on: new Set(),
+                    dependency_of: new Set(),
+                    visited: false,
+                };
+            });
+
+            if (data.dependencies) {
+                data.dependencies.forEach(dependency => {
+                    const bomRef = dependency.ref;
+                    if (!components[bomRef]) return;
+
+                    if (dependency.dependsOn) {
+                        dependency.dependsOn.forEach(dep => {
+                            if (components[dep]) {
+                                components[bomRef].depends_on.add(dep);
+                                components[dep].dependency_of.add(bomRef);
+                            }
+                        });
+                    }
+                });
+            }
+
+            return components;
+        }
+
+        function getChildren(components, component, parents) {
+            const children = [];
+            let value = 0;
+
+            component.depends_on.forEach(dep => {
+                const child = components[dep];
+                const childName = `${child.name} <b>${child.version}</b>`;
+                child.visited = true;
+
+                if (!parents.includes(dep)) {
+                    parents.push(dep);
+                    const [childChildren, childrenValue] = getChildren(components, child, parents);
+                    value += childrenValue;
+                    children.push({ name: childName, children: childChildren, value: childrenValue });
+                } else {
+                    value += 1;
+                    children.push({ name: childName, children: [], value: 1 });
+                }
+            });
+
+            return [children, value || 1];
+        }
+
+        function buildEchartsData(components) {
+            const data = [];
+
+            Object.entries(components).forEach(([bomRef, component]) => {
+                if (component.dependency_of.size > 0) return;
+
+                component.visited = true;
+                const parents = [bomRef];
+                const rootName = `${component.name} <b>${component.version}</b>`;
+                const [rootChildren, rootValue] = getChildren(components, component, parents);
+
+                data.push({ name: rootName, children: rootChildren, value: rootValue });
+            });
+
+            return data;
+        }
+
+        function renderChart(data) {
+            const chartContainer = document.getElementById('chart-container');
+            const myChart = echarts.init(chartContainer, null, {
+                renderer: 'canvas',
+                useDirtyRect: false
+            });
+
+            const option = {
+                tooltip: {
+                    formatter: params => params.name,
+                },
+                series: {
+                    type: 'sunburst',
+                    radius: ['15%', '80%'],
+                    data: data,
+                    sort: null,
+                    emphasis: { focus: 'ancestor' },
+                    label: { rotate: 'radial', show: false },
+                    levels: [],
+                    itemStyle: { color: '#7dd491', orderWidth: 2 }
+                }
+            };
+
+            myChart.setOption(option);
+            window.addEventListener('resize', myChart.resize);
+        }
+    </script>
+</body>
+</html>
