@@ -73,11 +73,7 @@ option = {
       rotate: 'radial',
       show: false
     },
-    levels: [],
-    itemStyle: {
-      color: '#7dd491',
-      borderWidth: 2
-    }
+    levels: []
   }
 };
 
@@ -90,6 +86,27 @@ window.addEventListener('resize', myChart.resize);
     </body>
 </html>
 """
+
+
+BASIC_STYLE = { "color": '#7dd491', "borderWidth": 2 }
+
+
+class SetEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, set):
+            return list(obj)
+        return super().default(obj)
+
+
+def create_fake_component(bom_ref):
+    return {"name": bom_ref,
+            "version": "-",
+            "type": "-",
+            "depends_on": set(),
+            "dependency_of": set(),
+            "vulnerabilities": set(),
+            "max_vulnerability_severity": None,
+            "visited": False}
 
 
 def parse_file(input_file_path):
@@ -112,22 +129,39 @@ def parse_file(input_file_path):
         if "bom-ref" in component:
             bom_ref = component["bom-ref"]
         else:
-            bom_ref = f"{hash(json.dumps(new_component, sort_keys=True))}"
+            print(f"WARNING: component with name '{component['name']}' does not have a 'bom-ref'. I'll create a fake one.")
+            bom_ref = f"{hash(json.dumps(new_component, sort_keys=True, cls=SetEncoder))}"
 
         components[bom_ref] = new_component
+
+
+    # sometimes dependencies are declared inside a component, I'll check that now
+
+    for component in data["components"]:
+        if "dependencies" in component:
+            for dependency in component["dependencies"]:
+                depends_on = dependency["ref"]
+                if depends_on not in components:
+                    print(f"WARNING: 'ref' '{depends_on}' is used in 'dependencies' inside a component but it's not declared in 'components'. I'll create a fake one.")
+                    components[depends_on] = create_fake_component(depends_on)
+
+                components[bom_ref]["depends_on"].add(depends_on)
+                components[depends_on]["dependency_of"].add(bom_ref)
 
 
     if "dependencies" in data:
         for dependency in data["dependencies"]:
             bom_ref = dependency["ref"]
             if bom_ref not in components:
-                print(f"WARNING: 'ref' '{bom_ref}' is used in 'dependencies' but it's not declared in 'components'. Skipping.")
-                continue
+                print(f"WARNING: 'ref' '{bom_ref}' is used in 'dependencies' but it's not declared in 'components'. I'll create a fake one.")
+                components[bom_ref] = create_fake_component(bom_ref)
+
             if "dependsOn" in dependency:
                 for depends_on in dependency["dependsOn"]:
                     if depends_on not in components:
-                        print(f"WARNING: 'dependsOn' '{depends_on}' is used in 'dependencies' but it's not declared in 'components'. Skipping.")
-                        continue
+                        print(f"WARNING: 'dependsOn' '{depends_on}' is used in 'dependencies' but it's not declared in 'components'. I'll create a fake one.")
+                        components[depends_on] = create_fake_component(depends_on)
+
                     components[bom_ref]["depends_on"].add(depends_on)
                     components[depends_on]["dependency_of"].add(bom_ref)
 
@@ -145,8 +179,9 @@ def parse_file(input_file_path):
             for affects in vulnerability["affects"]:
                 bom_ref = affects["ref"]
                 if bom_ref not in components:
-                    print(f"WARNING: 'ref' '{bom_ref}' is used in 'vulnerabilities' but it's not declared in 'components'. Skipping.")
-                    continue
+                    print(f"WARNING: 'ref' '{bom_ref}' is used in 'vulnerabilities' but it's not declared in 'components'. I'll create a fake one.")
+                    components[bom_ref] = create_fake_component(bom_ref)
+
                 # TODO qui associo la vuln al componente
 
     return components
@@ -156,7 +191,10 @@ def get_children(components, component, parents):
     children = []
     value = 0
     for depends_on in component["depends_on"]:
-        child_name = f'{components[depends_on]["name"]} <b>{components[depends_on]["version"]}</b>'
+        if components[depends_on]["version"] != "-":
+            child_name = f'{components[depends_on]["name"]} <b>{components[depends_on]["version"]}</b>'
+        else:
+            child_name = f'{components[depends_on]["name"]}'
         child_component = components[depends_on]
         child_component["visited"] = True
         if depends_on not in parents:  # this is done to avoid infinite recursion in case of circular dependencies
@@ -165,17 +203,38 @@ def get_children(components, component, parents):
             value += children_value
             children.append({"name": child_name,
                              "children": child_children,
-                             "value": children_value})
+                             "value": children_value,
+                             "itemStyle": BASIC_STYLE
+                             })
         else:
             value += 1
             children.append({"name": child_name,
                              "children": [],
-                             "value": 1})
+                             "value": 1,
+                             "itemStyle": BASIC_STYLE
+                             })
 
     if value == 0:
         value = 1
 
     return children, value
+
+
+def add_root_component(components, component, data, bom_ref):
+    component["visited"] = True
+    parents = [bom_ref]
+    if component["version"] != "-":
+        root_name = f'{component["name"]} <b>{component["version"]}</b>'
+    else:
+        root_name = f'{component["name"]}'
+    root_children, root_value = get_children(components, component, parents)
+
+    new_element = {"name": root_name,
+                   "children": root_children,
+                   "value": root_value,
+                   "itemStyle": BASIC_STYLE
+                   }
+    data.append(new_element)
 
 
 def build_echarts_data(components):
@@ -185,28 +244,16 @@ def build_echarts_data(components):
         if len(component["dependency_of"]) != 0:
             continue
 
-        component["visited"] = True
-        parents = [bom_ref]
-        root_name = f'{component["name"]} <b>{component["version"]}</b>'
-        root_children, root_value = get_children(components, component, parents)
-
-        new_element = {"name": root_name,
-                       "children": root_children,
-                       "value": root_value}
-        data.append(new_element)
+        add_root_component(components, component, data, bom_ref)
 
     return data
 
 
 def double_check_if_all_components_were_taken_into_account(components, echart_data):
-    # this should never happen, we make this double check just to be sure
+    # this should happen only for circular dependencies
     for bom_ref, component in components.items():
         if component["visited"] is False:
-            name = f'{component["name"]} <b>{component["version"]}</b>'
-            new_element = {"name": name,
-                           "children": [],
-                           "value": 1}
-            echart_data.append(new_element)
+            add_root_component(components, component, echart_data, bom_ref)
 
 
 def write_output_file(html_content, output_file_path):
@@ -219,11 +266,12 @@ def main(input_file_path, output_file_path):
         print(f"File does not exist: '{input_file_path}'")
         exit()
 
-    try:
+    components = parse_file(input_file_path)
+    """try:
         components = parse_file(input_file_path)
     except Exception as e:
         print("Error parsing input file!")
-        exit()
+        exit()"""
 
     echart_data = build_echarts_data(components)
     double_check_if_all_components_were_taken_into_account(components, echart_data)
