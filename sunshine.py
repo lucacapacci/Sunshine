@@ -1,6 +1,8 @@
 import json
 import argparse
 import os
+import html
+
 
 VERSION = "0.9"
 NAME = "Sunshine"
@@ -12,6 +14,31 @@ PREFERRED_VULNERABILITY_RATING_METHODS_ORDER = ["CVSSv4",
                                                 "OWASP"
                                                 "SSVC"
                                                 "other"]
+
+VALID_SEVERITIES = {"critical": 4,
+                    "high": 3,
+                    "medium": 2,
+                    "low": 1,
+                    "info": 0,
+                    "information": 0,
+                    "clean": -1}
+
+
+BASIC_STYLE = { "color": '#7dd491', "borderWidth": 2 }
+INFORMATION_STYLE = { "color": '#63f5fc', "borderWidth": 2 }
+LOW_STYLE = { "color": '#ffe333', "borderWidth": 2 }
+MEDIUM_STYLE = { "color": '#ff9933', "borderWidth": 2 }
+HIGH_STYLE = { "color": '#ff4633', "borderWidth": 2 }
+CRITICAL_STYLE = { "color": '#a10a0a', "borderWidth": 2 }
+
+
+STYLES = {"critical": CRITICAL_STYLE,
+          "high": HIGH_STYLE,
+          "medium": MEDIUM_STYLE,
+          "low": LOW_STYLE,
+          "information": INFORMATION_STYLE,
+          "clean": BASIC_STYLE}
+
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -88,9 +115,6 @@ window.addEventListener('resize', myChart.resize);
 """
 
 
-BASIC_STYLE = { "color": '#7dd491', "borderWidth": 2 }
-
-
 class SetEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, set):
@@ -104,9 +128,134 @@ def create_fake_component(bom_ref):
             "type": "-",
             "depends_on": set(),
             "dependency_of": set(),
-            "vulnerabilities": set(),
-            "max_vulnerability_severity": None,
+            "vulnerabilities": [],
+            "max_vulnerability_severity": "clean",
             "visited": False}
+
+
+def get_severity_by_score(score):
+    score = float(score)
+    if score >= 9:
+        return "critical"
+    elif score >= 7:
+        return "high"
+    elif score >= 4:
+        return "medium"
+    elif score > 0:
+        return "low"
+    else:
+        return "information"
+
+
+def parse_vulnerability_data(vulnerability):
+    vuln_id = vulnerability["id"]
+
+    vuln_severity = None
+    for rating in vulnerability["ratings"]:
+        for preferred_rating_method in PREFERRED_VULNERABILITY_RATING_METHODS_ORDER:
+            if rating["method"] == preferred_rating_method:
+                if "severity" in rating:
+                    rating_vuln_severity = rating["severity"]
+                    if rating_vuln_severity.lower() in VALID_SEVERITIES:
+                        if rating_vuln_severity.lower() == "info":
+                            rating_vuln_severity = "information"
+                        vuln_severity = rating_vuln_severity.lower()
+                        break
+                if "score" in rating:
+                    vuln_severity = get_severity_by_score(rating["score"])
+                    break
+
+    if vuln_severity is None:
+        if "ratings" not in vulnerability:
+            vuln_severity = get_severity_by_score(0)
+        elif len(vulnerability["ratings"]) == 0:
+            vuln_severity = get_severity_by_score(0)
+        else:
+            for rating in vulnerability["ratings"]:
+                if "severity" in rating:
+                    rating_vuln_severity = rating["severity"]
+                    if rating_vuln_severity.lower() in VALID_SEVERITIES:
+                        vuln_severity = rating_vuln_severity.lower()
+                        break
+                if "score" in rating:
+                    vuln_severity = get_severity_by_score(rating["score"])
+                    break
+
+    if vuln_severity is None:
+        vuln_severity = get_severity_by_score(0)
+
+    return vuln_id, vuln_severity
+
+
+def get_bom_ref(component_json, all_bom_refs):
+    if "bom-ref" in component_json:
+        bom_ref = component_json["bom-ref"]
+    else:
+        print(f"WARNING: component with name '{component_json['name']}' and version '{component_json["version"]}' does not have a 'bom-ref'. I'll search for a match...")
+        for potential_bom_ref in all_bom_refs:
+            guessed_name_01 = f'{component_json["name"]}@{component_json["version"]}'
+            guessed_name_02 = f'{component_json["name"]}::{component_json["version"]}'
+            guessed_name_03 = f'{component_json["name"]}:{component_json["version"]}'
+
+            for test in [guessed_name_01, guessed_name_02, guessed_name_03]:
+                if potential_bom_ref.endswith(f"/{test}"):
+                    print(f"Match found: {potential_bom_ref}")
+                    return potential_bom_ref
+                if potential_bom_ref.endswith(f"/{test}:"):
+                    print(f"Match found: {potential_bom_ref}")
+                    return potential_bom_ref
+                if potential_bom_ref.endswith(f":{test}"):
+                    print(f"Match found: {potential_bom_ref}")
+                    return potential_bom_ref
+                if potential_bom_ref.endswith(f":{test}:"):
+                    print(f"Match found: {potential_bom_ref}")
+                    return potential_bom_ref
+
+        print(f"Match not found. I'll create a fake one.")
+        bom_ref = f"{hash(json.dumps(component_json, sort_keys=True, cls=SetEncoder))}"
+    return bom_ref
+
+
+def get_all_bom_refs(data):
+    bom_refs = set()
+
+    root_keywords = []
+    if "components" in data:
+        root_keywords.append("components")
+    if "services" in data:
+        root_keywords.append("services")
+
+    for root_keyword in root_keywords:
+        for component in data[root_keyword]:
+            if "bom-ref" in component:
+                bom_refs.add(component["bom-ref"])
+
+            if "dependencies" in component:
+                for dependency in component["dependencies"]:
+                    if "ref" in dependency:
+                        bom_refs.add(dependency["ref"])
+
+            if root_keyword == "services":
+                if "services" in component:
+                    for sub_component in component["services"]:
+                        if "bom-ref" in sub_component:
+                            bom_refs.add(sub_component["bom-ref"])
+
+    if "dependencies" in data:
+        for dependency in data["dependencies"]:
+            if "ref" in dependency:
+                bom_refs.add(dependency["ref"])
+
+            if "dependsOn" in dependency:
+                for depends_on in dependency["dependsOn"]:
+                    bom_refs.add(depends_on)
+
+    if "metadata" in data:
+        if "component" in data["metadata"]:
+            if "bom-ref" in data["metadata"]["component"]:
+                bom_refs.add(data["metadata"]["component"]["bom-ref"])
+
+    return bom_refs
 
 
 def parse_file(input_file_path):
@@ -114,40 +263,88 @@ def parse_file(input_file_path):
     with open(input_file_path, 'r') as file:
         data = json.load(file)
 
+    all_bom_refs = get_all_bom_refs(data)
+
     components = {}
 
-    for component in data["components"]:
-        new_component = {"name": component["name"],
-                         "version": component["version"] if "version" in component else "-",
-                         "type": component["type"],
-                         "depends_on": set(),
-                         "dependency_of": set(),
-                         "vulnerabilities": set(),
-                         "max_vulnerability_severity": None,
-                         "visited": False}
+    root_keywords = []
+    if "components" in data:
+        root_keywords.append("components")
+    if "services" in data:
+        root_keywords.append("services")
 
-        if "bom-ref" in component:
-            bom_ref = component["bom-ref"]
-        else:
-            print(f"WARNING: component with name '{component['name']}' does not have a 'bom-ref'. I'll create a fake one.")
-            bom_ref = f"{hash(json.dumps(new_component, sort_keys=True, cls=SetEncoder))}"
+    if "metadata" in data:
+        if "component" in data["metadata"]:
+            component = data["metadata"]["component"]
+            if "name" in component and "version" in component:
+                new_component = {"name": component["name"],
+                                 "version": component["version"] if "version" in component else "-",
+                                 "type": component["type"] if "type" in component else "-",
+                                 "depends_on": set(),
+                                 "dependency_of": set(),
+                                 "vulnerabilities": [],
+                                 "max_vulnerability_severity": "clean",
+                                 "visited": False}
 
-        components[bom_ref] = new_component
+            bom_ref = get_bom_ref(component, all_bom_refs)
+            components[bom_ref] = new_component
 
+    for root_keyword in root_keywords:
+        for component in data[root_keyword]:
+            new_component = {"name": component["name"],
+                             "version": component["version"] if "version" in component else "-",
+                             "type": component["type"] if "type" in component else "-",
+                             "depends_on": set(),
+                             "dependency_of": set(),
+                             "vulnerabilities": [],
+                             "max_vulnerability_severity": "clean",
+                             "visited": False}
 
-    # sometimes dependencies are declared inside a component, I'll check that now
+            bom_ref = get_bom_ref(component, all_bom_refs)
+            components[bom_ref] = new_component
 
-    for component in data["components"]:
-        if "dependencies" in component:
-            for dependency in component["dependencies"]:
-                depends_on = dependency["ref"]
-                if depends_on not in components:
-                    print(f"WARNING: 'ref' '{depends_on}' is used in 'dependencies' inside a component but it's not declared in 'components'. I'll create a fake one.")
-                    components[depends_on] = create_fake_component(depends_on)
+        if root_keyword == "services":
+            if "services" in component:
+                for sub_component in component["services"]:
+                    new_component = {"name": sub_component["name"],
+                                     "version": sub_component["version"] if "version" in sub_component else "-",
+                                     "type": sub_component["type"] if "type" in sub_component else "-",
+                                     "depends_on": set(),
+                                     "dependency_of": set(),
+                                     "vulnerabilities": [],
+                                     "max_vulnerability_severity": "clean",
+                                     "visited": False}
 
-                components[bom_ref]["depends_on"].add(depends_on)
-                components[depends_on]["dependency_of"].add(bom_ref)
+                    bom_ref = get_bom_ref(sub_component, all_bom_refs)
+                    components[bom_ref] = new_component
 
+        # sometimes dependencies are declared inside a component, I'll check that now
+        for component in data[root_keyword]:
+            bom_ref = get_bom_ref(component, all_bom_refs)
+
+            if "dependencies" in component:
+                for dependency in component["dependencies"]:
+                    depends_on = dependency["ref"]
+                    if depends_on not in components:
+                        print(f"WARNING: 'ref' '{depends_on}' is used in 'dependencies' inside a component but it's not declared in 'components'. I'll create a fake one.")
+                        components[depends_on] = create_fake_component(depends_on)
+
+                    components[bom_ref]["depends_on"].add(depends_on)
+                    components[depends_on]["dependency_of"].add(bom_ref)
+
+        # sometimes vulnerabilities are declared inside a component, I'll check that now
+        for component in data[root_keyword]:
+            bom_ref = get_bom_ref(component, all_bom_refs)
+
+            if "vulnerabilities" in component:
+                for vulnerability in component["vulnerabilities"]:
+                    vuln_id, vuln_severity = parse_vulnerability_data(vulnerability)
+
+                    vulnerability_data = {"id": vuln_id, "severity": vuln_severity}
+                    if vulnerability_data not in components[bom_ref]["vulnerabilities"]:
+                        components[bom_ref]["vulnerabilities"].append(vulnerability_data)
+                    if VALID_SEVERITIES[vuln_severity] > VALID_SEVERITIES[components[bom_ref]["max_vulnerability_severity"]]:
+                        components[bom_ref]["max_vulnerability_severity"] = vuln_severity
 
     if "dependencies" in data:
         for dependency in data["dependencies"]:
@@ -167,14 +364,7 @@ def parse_file(input_file_path):
 
     if "vulnerabilities" in data:
         for vulnerability in data["vulnerabilities"]:
-            vuln_id = vulnerability["id"]
-
-            vuln_rating = None
-            available_rating_methods = set()
-            for rating in vulnerability["ratings"]:
-                available_rating_methods.add(rating["method"])
-
-            # TODO qui scelgo il metodo di rating che mi piace di più e poi estraggo i suoi valori
+            vuln_id, vuln_severity = parse_vulnerability_data(vulnerability)
 
             for affects in vulnerability["affects"]:
                 bom_ref = affects["ref"]
@@ -182,19 +372,44 @@ def parse_file(input_file_path):
                     print(f"WARNING: 'ref' '{bom_ref}' is used in 'vulnerabilities' but it's not declared in 'components'. I'll create a fake one.")
                     components[bom_ref] = create_fake_component(bom_ref)
 
-                # TODO qui associo la vuln al componente
+                vulnerability_data = {"id": vuln_id, "severity": vuln_severity}
+                if vulnerability_data not in components[bom_ref]["vulnerabilities"]:
+                    components[bom_ref]["vulnerabilities"].append(vulnerability_data)
+                if VALID_SEVERITIES[vuln_severity] > VALID_SEVERITIES[components[bom_ref]["max_vulnerability_severity"]]:
+                    components[bom_ref]["max_vulnerability_severity"] = vuln_severity
 
     return components
+
+
+def prepare_chart_name(component):
+    if component["version"] != "-":
+        name = f'{html.escape(component["name"])} <b>{html.escape(component["version"])}</b>'
+    else:
+        name = f'{html.escape(component["name"])}'
+
+    if len(component["vulnerabilities"]) > 0:
+        name += "<br>"
+        vulns = {}
+        for vulnerability in component["vulnerabilities"]:
+            vulns[f'<li>{html.escape(vulnerability["id"])} ({html.escape(vulnerability["severity"])})</li>'] = VALID_SEVERITIES[vulnerability["severity"]]
+
+        vulns = dict(sorted(vulns.items(), key=lambda item: item[1], reverse=True))
+
+        vulns_to_be_shown = list(vulns.keys())
+        if len(vulns_to_be_shown) > 10:
+            vulns_to_be_shown = vulns_to_be_shown[:10]
+            vulns_to_be_shown.append("<li>...</li>")
+
+
+        name += "".join(vulns_to_be_shown)
+    return name
 
 
 def get_children(components, component, parents):
     children = []
     value = 0
     for depends_on in component["depends_on"]:
-        if components[depends_on]["version"] != "-":
-            child_name = f'{components[depends_on]["name"]} <b>{components[depends_on]["version"]}</b>'
-        else:
-            child_name = f'{components[depends_on]["name"]}'
+        child_name = prepare_chart_name(components[depends_on])
         child_component = components[depends_on]
         child_component["visited"] = True
         if depends_on not in parents:  # this is done to avoid infinite recursion in case of circular dependencies
@@ -204,14 +419,14 @@ def get_children(components, component, parents):
             children.append({"name": child_name,
                              "children": child_children,
                              "value": children_value,
-                             "itemStyle": BASIC_STYLE
+                             "itemStyle": STYLES[components[depends_on]["max_vulnerability_severity"]]
                              })
         else:
             value += 1
             children.append({"name": child_name,
                              "children": [],
                              "value": 1,
-                             "itemStyle": BASIC_STYLE
+                             "itemStyle": STYLES[components[depends_on]["max_vulnerability_severity"]]
                              })
 
     if value == 0:
@@ -223,16 +438,13 @@ def get_children(components, component, parents):
 def add_root_component(components, component, data, bom_ref):
     component["visited"] = True
     parents = [bom_ref]
-    if component["version"] != "-":
-        root_name = f'{component["name"]} <b>{component["version"]}</b>'
-    else:
-        root_name = f'{component["name"]}'
+    root_name = prepare_chart_name(component)
     root_children, root_value = get_children(components, component, parents)
 
     new_element = {"name": root_name,
                    "children": root_children,
                    "value": root_value,
-                   "itemStyle": BASIC_STYLE
+                   "itemStyle": STYLES[component["max_vulnerability_severity"]]
                    }
     data.append(new_element)
 
