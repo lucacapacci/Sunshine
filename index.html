@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sunshine - SBOM visualization tool</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+    <script src="https://fastly.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #output {
+            white-space: pre-line;
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-family: "Courier New", "Lucida Console", monospace;
+        }
+        #chart-container {
+            position: relative;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #file-input {
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sunshine - SBOM visualization tool</h1>
+    <input type="file" id="file-input" accept=".json">
+    <h3>Log:</h3>
+    <div id="output">Log will appear here...</div>
+    <div id="chart-container"></div>
+    
+
+    <script>
+        function generateRandomString() {
+            var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result = '';
+            var charactersLength = characters.length;
+
+            for (let i = 0; i < 20; i++) {
+                result += characters.charAt(Math.floor(Math.random() * charactersLength));
+            }
+
+            return result;
+        }
+
+        let pyodideInstance = null;
+        var pythonScriptUrl = "./sunshine.py?" + generateRandomString();
+        var pythonScript = null;
+
+        function writeToLog(text) {           
+            var date = new Date();
+            var formattedDate = date.toISOString().replace('T', ' ').split('.')[0];
+
+            if (document.getElementById("output").textContent == "Log will appear here..." || text == "~~~~~~~~~~~~~~~ New file selected ~~~~~~~~~~~~~~~") {
+                document.getElementById("output").textContent = "[" + formattedDate + "] " + text;
+            }
+            else {
+                document.getElementById("output").textContent += "\n" + "[" + formattedDate + "] " + text;
+            }
+        }
+
+        function renderChart(data) {
+            var dom = document.getElementById('chart-container');
+            var myChart = echarts.init(dom, null, {
+              renderer: 'canvas',
+              useDirtyRect: false
+            });
+            var app = {};
+
+            var option;
+
+            const item1 = {
+              color: '#F54F4A'
+            };
+            const item2 = {
+              color: '#FF8C75'
+            };
+            const item3 = {
+              color: '#FFB499'
+            };
+
+            option = {
+              tooltip: {
+                    formatter: function(params) {
+                        return `${params.name}`;
+                    },
+                },
+              series: {
+                radius: ['15%', '80%'],
+                type: 'sunburst',
+                sort: undefined,
+                emphasis: {
+                  focus: 'ancestor'
+                },
+                data: data,
+                label: {
+                  rotate: 'radial',
+                  show: false
+                },
+                levels: []
+              }
+            };
+
+            if (option && typeof option === 'object') {
+              myChart.setOption(option);
+            }
+
+            window.addEventListener('resize', myChart.resize);
+        }
+
+        async function loadPyodideAndRun() {
+            if (!pyodideInstance) {
+                writeToLog("Loading environment...");
+                pyodideInstance = await loadPyodide();
+                writeToLog("Environment loaded!");
+            }
+        }
+
+        // ----------------------------------
+
+        document.getElementById('file-input').addEventListener('change', handleFile);
+        function handleFile(event) {
+            writeToLog("~~~~~~~~~~~~~~~ New file selected ~~~~~~~~~~~~~~~");
+            var file = event.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    var data = e.target.result;
+                    loadAndRunScript(data);
+                } catch (error) {
+                    writeToLog("Error processing file: " + error);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // ----------------------------------
+
+        async function loadAndRunScript(data) {
+            await loadPyodideAndRun();
+
+            if (!pythonScript) {
+                try {
+                    writeToLog("Fetching instructions to be executed...");
+                    var response = await fetch(pythonScriptUrl);
+                    if (!response.ok) {
+                        writeToLog(`Failed to fetch instructions to be executed: ${response.statusText}`);
+                    }
+                    pythonScript = await response.text();
+                    writeToLog("Instructions fetched!");
+                } catch (error) {
+                    writeToLog(`Error: ${error.message}`);
+                }
+            }
+            if (pythonScript) {
+                writeToLog("Executing...");
+                pyodideInstance.globals.set("__name__", "__web__");
+                pyodideInstance.globals.set("INPUT_DATA", data);
+
+                var result = await pyodideInstance.runPythonAsync(pythonScript);
+                writeToLog("Execution complete!");
+                //document.getElementById("output").textContent += "<br>"+result;
+            
+                let echartData = pyodideInstance.globals.get('OUTPUT_DATA');
+                //alert(echartData);
+                writeToLog("Building chart...");
+                renderChart(JSON.parse(echartData));
+                writeToLog("Chart built!");
+                writeToLog("Finished. Scroll down to view the rendered chart");
+            }
+        }
+    </script>
+</body>
+</html>

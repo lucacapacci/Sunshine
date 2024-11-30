@@ -115,6 +115,14 @@ window.addEventListener('resize', myChart.resize);
 """
 
 
+def custom_print(text):
+    if __name__ == "__web__":
+        from js import writeToLog
+        writeToLog(text)
+    else:
+        print(text)
+
+
 class SetEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, set):
@@ -191,7 +199,7 @@ def get_bom_ref(component_json, all_bom_refs):
     if "bom-ref" in component_json:
         bom_ref = component_json["bom-ref"]
     else:
-        print(f"WARNING: component with name '{component_json['name']}' and version '{component_json["version"]}' does not have a 'bom-ref'. I'll search for a match...")
+        custom_print(f"WARNING: component with name '{component_json['name']}' and version '{component_json["version"]}' does not have a 'bom-ref'. I'll search for a match...")
         for potential_bom_ref in all_bom_refs:
             guessed_name_01 = f'{component_json["name"]}@{component_json["version"]}'
             guessed_name_02 = f'{component_json["name"]}::{component_json["version"]}'
@@ -199,19 +207,19 @@ def get_bom_ref(component_json, all_bom_refs):
 
             for test in [guessed_name_01, guessed_name_02, guessed_name_03]:
                 if potential_bom_ref.endswith(f"/{test}"):
-                    print(f"Match found: {potential_bom_ref}")
+                    custom_print(f"Match found: {potential_bom_ref}")
                     return potential_bom_ref
                 if potential_bom_ref.endswith(f"/{test}:"):
-                    print(f"Match found: {potential_bom_ref}")
+                    custom_print(f"Match found: {potential_bom_ref}")
                     return potential_bom_ref
                 if potential_bom_ref.endswith(f":{test}"):
-                    print(f"Match found: {potential_bom_ref}")
+                    custom_print(f"Match found: {potential_bom_ref}")
                     return potential_bom_ref
                 if potential_bom_ref.endswith(f":{test}:"):
-                    print(f"Match found: {potential_bom_ref}")
+                    custom_print(f"Match found: {potential_bom_ref}")
                     return potential_bom_ref
 
-        print(f"Match not found. I'll create a fake one.")
+        custom_print(f"Match not found. I'll create a fake one.")
         bom_ref = f"{hash(json.dumps(component_json, sort_keys=True, cls=SetEncoder))}"
     return bom_ref
 
@@ -258,11 +266,7 @@ def get_all_bom_refs(data):
     return bom_refs
 
 
-def parse_file(input_file_path):
-    print("Parsing input file...")
-    with open(input_file_path, 'r') as file:
-        data = json.load(file)
-
+def parse_json_data(data):
     all_bom_refs = get_all_bom_refs(data)
 
     components = {}
@@ -276,7 +280,7 @@ def parse_file(input_file_path):
     if "metadata" in data:
         if "component" in data["metadata"]:
             component = data["metadata"]["component"]
-            if "name" in component and "version" in component:
+            if "name" in component and "version" in component:  # TODO CAMBIARE CON UN BOM_REF GIA' VISTO
                 new_component = {"name": component["name"],
                                  "version": component["version"] if "version" in component else "-",
                                  "type": component["type"] if "type" in component else "-",
@@ -286,8 +290,8 @@ def parse_file(input_file_path):
                                  "max_vulnerability_severity": "clean",
                                  "visited": False}
 
-            bom_ref = get_bom_ref(component, all_bom_refs)
-            components[bom_ref] = new_component
+                bom_ref = get_bom_ref(component, all_bom_refs)
+                components[bom_ref] = new_component
 
     for root_keyword in root_keywords:
         for component in data[root_keyword]:
@@ -326,7 +330,7 @@ def parse_file(input_file_path):
                 for dependency in component["dependencies"]:
                     depends_on = dependency["ref"]
                     if depends_on not in components:
-                        print(f"WARNING: 'ref' '{depends_on}' is used in 'dependencies' inside a component but it's not declared in 'components'. I'll create a fake one.")
+                        custom_print(f"WARNING: 'ref' '{depends_on}' is used in 'dependencies' inside a component but it's not declared in 'components'. I'll create a fake one.")
                         components[depends_on] = create_fake_component(depends_on)
 
                     components[bom_ref]["depends_on"].add(depends_on)
@@ -350,13 +354,13 @@ def parse_file(input_file_path):
         for dependency in data["dependencies"]:
             bom_ref = dependency["ref"]
             if bom_ref not in components:
-                print(f"WARNING: 'ref' '{bom_ref}' is used in 'dependencies' but it's not declared in 'components'. I'll create a fake one.")
+                custom_print(f"WARNING: 'ref' '{bom_ref}' is used in 'dependencies' but it's not declared in 'components'. I'll create a fake one.")
                 components[bom_ref] = create_fake_component(bom_ref)
 
             if "dependsOn" in dependency:
                 for depends_on in dependency["dependsOn"]:
                     if depends_on not in components:
-                        print(f"WARNING: 'dependsOn' '{depends_on}' is used in 'dependencies' but it's not declared in 'components'. I'll create a fake one.")
+                        custom_print(f"WARNING: 'dependsOn' '{depends_on}' is used in 'dependencies' but it's not declared in 'components'. I'll create a fake one.")
                         components[depends_on] = create_fake_component(depends_on)
 
                     components[bom_ref]["depends_on"].add(depends_on)
@@ -369,7 +373,7 @@ def parse_file(input_file_path):
             for affects in vulnerability["affects"]:
                 bom_ref = affects["ref"]
                 if bom_ref not in components:
-                    print(f"WARNING: 'ref' '{bom_ref}' is used in 'vulnerabilities' but it's not declared in 'components'. I'll create a fake one.")
+                    custom_print(f"WARNING: 'ref' '{bom_ref}' is used in 'vulnerabilities' but it's not declared in 'components'. I'll create a fake one.")
                     components[bom_ref] = create_fake_component(bom_ref)
 
                 vulnerability_data = {"id": vuln_id, "severity": vuln_severity}
@@ -381,7 +385,20 @@ def parse_file(input_file_path):
     return components
 
 
-def prepare_chart_name(component):
+def parse_string(input_string):
+    custom_print("Parsing input string...")
+    data = json.loads(input_string)
+    return parse_json_data(data)
+
+
+def parse_file(input_file_path):
+    custom_print("Parsing input file...")
+    with open(input_file_path, 'r') as file:
+        data = json.load(file)
+    return parse_json_data(data)
+
+
+def prepare_chart_element_name(component):
     if component["version"] != "-":
         name = f'{html.escape(component["name"])} <b>{html.escape(component["version"])}</b>'
     else:
@@ -409,7 +426,7 @@ def get_children(components, component, parents):
     children = []
     value = 0
     for depends_on in component["depends_on"]:
-        child_name = prepare_chart_name(components[depends_on])
+        child_name = prepare_chart_element_name(components[depends_on])
         child_component = components[depends_on]
         child_component["visited"] = True
         if depends_on not in parents:  # this is done to avoid infinite recursion in case of circular dependencies
@@ -438,7 +455,7 @@ def get_children(components, component, parents):
 def add_root_component(components, component, data, bom_ref):
     component["visited"] = True
     parents = [bom_ref]
-    root_name = prepare_chart_name(component)
+    root_name = prepare_chart_element_name(component)
     root_children, root_value = get_children(components, component, parents)
 
     new_element = {"name": root_name,
@@ -473,29 +490,41 @@ def write_output_file(html_content, output_file_path):
         text_file.write(html_content)
 
 
-def main(input_file_path, output_file_path):
+def main_cli(input_file_path, output_file_path):
     if not os.path.exists(input_file_path):
-        print(f"File does not exist: '{input_file_path}'")
+        custom_print(f"File does not exist: '{input_file_path}'")
         exit()
 
-    components = parse_file(input_file_path)
-    """try:
+    try:
         components = parse_file(input_file_path)
     except Exception as e:
-        print("Error parsing input file!")
-        exit()"""
+        custom_print(f"Error parsing input file: {e}")
+        exit()
 
     echart_data = build_echarts_data(components)
     double_check_if_all_components_were_taken_into_account(components, echart_data)
     
     html_content = HTML_TEMPLATE.replace("DATA_HERE", json.dumps(echart_data, indent=2))
     write_output_file(html_content, output_file_path)
-    print("Done.")
-        
+    custom_print("Done.")
+
+
+def main_web(input_string):
+    try:
+        components = parse_string(input_string)
+    except Exception as e:
+        custom_print(f"Error parsing input string: {e}")
+        exit()
+
+    echart_data = build_echarts_data(components)
+    double_check_if_all_components_were_taken_into_account(components, echart_data)
+    
+    #html_content = HTML_TEMPLATE.replace("DATA_HERE", json.dumps(echart_data, indent=2))
+    return json.dumps(echart_data, indent=2)
 
 
 if __name__ == "__main__":
-    print(f'''
+    custom_print(f'''
  ▗▄▄▖▗▖ ▗▖▗▖  ▗▖ ▗▄▄▖▗▖ ▗▖▗▄▄▄▖▗▖  ▗▖▗▄▄▄▖
 ▐▌   ▐▌ ▐▌▐▛▚▖▐▌▐▌   ▐▌ ▐▌  █  ▐▛▚▖▐▌▐▌   
  ▝▀▚▖▐▌ ▐▌▐▌ ▝▜▌ ▝▀▚▖▐▛▀▜▌  █  ▐▌ ▝▜▌▐▛▀▀▘
@@ -517,4 +546,10 @@ if __name__ == "__main__":
 
     input_file_path = args.input
     output_file_path = args.output
-    main(input_file_path, output_file_path)
+    main_cli(input_file_path, output_file_path)
+
+
+if __name__ == "__web__":
+    echart_data = main_web(INPUT_DATA)
+    OUTPUT_DATA = echart_data
+
