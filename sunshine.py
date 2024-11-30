@@ -30,6 +30,7 @@ LOW_STYLE = { "color": '#ffe333', "borderWidth": 2 }
 MEDIUM_STYLE = { "color": '#ff9933', "borderWidth": 2 }
 HIGH_STYLE = { "color": '#ff4633', "borderWidth": 2 }
 CRITICAL_STYLE = { "color": '#a10a0a', "borderWidth": 2 }
+TRANSITIVE_VULN_STYLE = { "color": '#bebebe', "borderWidth": 2 }
 
 
 STYLES = {"critical": CRITICAL_STYLE,
@@ -70,17 +71,7 @@ var app = {};
 
 var option;
 
-const item1 = {
-  color: '#F54F4A'
-};
-const item2 = {
-  color: '#FF8C75'
-};
-const item3 = {
-  color: '#FFB499'
-};
 const data = DATA_HERE;
-
 
 option = {
   tooltip: {
@@ -138,6 +129,7 @@ def create_fake_component(bom_ref):
             "dependency_of": set(),
             "vulnerabilities": [],
             "max_vulnerability_severity": "clean",
+            "has_transitive_vulnerabilities": False,
             "visited": False}
 
 
@@ -226,6 +218,7 @@ def get_bom_ref(component_json, all_bom_refs):
 
 def get_all_bom_refs(data):
     bom_refs = set()
+    meta_bom_ref_is_used = False
 
     root_keywords = []
     if "components" in data:
@@ -261,13 +254,15 @@ def get_all_bom_refs(data):
     if "metadata" in data:
         if "component" in data["metadata"]:
             if "bom-ref" in data["metadata"]["component"]:
+                if data["metadata"]["component"]["bom-ref"] in bom_refs:
+                    meta_bom_ref_is_used = True
                 bom_refs.add(data["metadata"]["component"]["bom-ref"])
 
-    return bom_refs
+    return bom_refs, meta_bom_ref_is_used
 
 
 def parse_json_data(data):
-    all_bom_refs = get_all_bom_refs(data)
+    all_bom_refs, meta_bom_ref_is_used = get_all_bom_refs(data)
 
     components = {}
 
@@ -280,7 +275,7 @@ def parse_json_data(data):
     if "metadata" in data:
         if "component" in data["metadata"]:
             component = data["metadata"]["component"]
-            if "name" in component and "version" in component:  # TODO CAMBIARE CON UN BOM_REF GIA' VISTO
+            if meta_bom_ref_is_used is True:
                 new_component = {"name": component["name"],
                                  "version": component["version"] if "version" in component else "-",
                                  "type": component["type"] if "type" in component else "-",
@@ -288,6 +283,7 @@ def parse_json_data(data):
                                  "dependency_of": set(),
                                  "vulnerabilities": [],
                                  "max_vulnerability_severity": "clean",
+                                 "has_transitive_vulnerabilities": False,
                                  "visited": False}
 
                 bom_ref = get_bom_ref(component, all_bom_refs)
@@ -302,6 +298,7 @@ def parse_json_data(data):
                              "dependency_of": set(),
                              "vulnerabilities": [],
                              "max_vulnerability_severity": "clean",
+                             "has_transitive_vulnerabilities": False,
                              "visited": False}
 
             bom_ref = get_bom_ref(component, all_bom_refs)
@@ -317,6 +314,7 @@ def parse_json_data(data):
                                      "dependency_of": set(),
                                      "vulnerabilities": [],
                                      "max_vulnerability_severity": "clean",
+                                     "has_transitive_vulnerabilities": False,
                                      "visited": False}
 
                     bom_ref = get_bom_ref(sub_component, all_bom_refs)
@@ -422,46 +420,72 @@ def prepare_chart_element_name(component):
     return name
 
 
+def determine_style(component):
+    if component["max_vulnerability_severity"] != "clean":
+        return STYLES[component["max_vulnerability_severity"]]
+    if component["has_transitive_vulnerabilities"] is True:
+        return TRANSITIVE_VULN_STYLE
+    else:
+        return STYLES[component["max_vulnerability_severity"]]
+
+
 def get_children(components, component, parents):
     children = []
     value = 0
+    has_vulnerable_children_or_is_vulnerable = False
+    if len(component["vulnerabilities"]) > 0:
+        has_vulnerable_children_or_is_vulnerable = True
+        component["has_transitive_vulnerabilities"] = True
     for depends_on in component["depends_on"]:
         child_name = prepare_chart_element_name(components[depends_on])
         child_component = components[depends_on]
         child_component["visited"] = True
         if depends_on not in parents:  # this is done to avoid infinite recursion in case of circular dependencies
             parents.append(depends_on)
-            child_children, children_value = get_children(components, child_component, parents)
+            child_children, children_value, has_vulnerable_children_or_is_vulnerable = get_children(components, child_component, parents)
+            if len(child_component["vulnerabilities"]) > 0 or child_component["has_transitive_vulnerabilities"] is True or has_vulnerable_children_or_is_vulnerable is True:
+                component["has_transitive_vulnerabilities"] = True
+                has_vulnerable_children_or_is_vulnerable = True
+
             value += children_value
+            
             children.append({"name": child_name,
                              "children": child_children,
                              "value": children_value,
-                             "itemStyle": STYLES[components[depends_on]["max_vulnerability_severity"]]
+                             "itemStyle": determine_style(child_component)
                              })
         else:
             value += 1
+            for child_depends_on in child_component["depends_on"]:
+                if len(child_depends_on["vulnerabilities"]) > 0 or child_depends_on["has_transitive_vulnerabilities"] is True:
+                    child_component["has_transitive_vulnerabilities"] = True
+                    break
+
             children.append({"name": child_name,
                              "children": [],
                              "value": 1,
-                             "itemStyle": STYLES[components[depends_on]["max_vulnerability_severity"]]
+                             "itemStyle": determine_style(child_component)
                              })
 
     if value == 0:
         value = 1
 
-    return children, value
+    return children, value, has_vulnerable_children_or_is_vulnerable
 
 
 def add_root_component(components, component, data, bom_ref):
     component["visited"] = True
     parents = [bom_ref]
     root_name = prepare_chart_element_name(component)
-    root_children, root_value = get_children(components, component, parents)
+    root_children, root_value, has_vulnerable_children_or_is_vulnerable = get_children(components, component, parents)
+
+    if has_vulnerable_children_or_is_vulnerable is True:
+        component["has_transitive_vulnerabilities"] = True
 
     new_element = {"name": root_name,
                    "children": root_children,
                    "value": root_value,
-                   "itemStyle": STYLES[component["max_vulnerability_severity"]]
+                   "itemStyle": determine_style(component)
                    }
     data.append(new_element)
 
