@@ -21,10 +21,22 @@
             font-family: "Courier New", "Lucida Console", monospace;
         }
         #chart-container {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
             position: relative;
             height: 100vh;
             overflow: hidden;
         }
+
+        #chart-container-placeholder {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
         #file-input {
             margin: 20px;
         }
@@ -32,10 +44,16 @@
 </head>
 <body>
     <h1>Sunshine - SBOM visualization tool</h1>
-    <input type="file" id="file-input" accept=".json">
+    <span>Select a CycloneDX JSON file:</span><input type="file" id="file-input" accept=".json">
+    <h3>Chart:</h3>
+    <div id="chart-container" style="display: none">
+        Chart will appear here...
+    </div>
+    <div id="chart-container-placeholder" style="display: block">
+        Chart will appear here...
+    </div>
     <h3>Log:</h3>
     <div id="output">Log will appear here...</div>
-    <div id="chart-container"></div>
     
 
     <script>
@@ -114,10 +132,24 @@
             }
         }
 
-        // ----------------------------------
+        function showDiv(divId) {
+            var div = document.getElementById(divId);
+            if (div.style.display === "none") {
+                div.style.display = "block";
+            }
+        }
+
+        function hideDiv(divId) {
+            var div = document.getElementById(divId);
+            if (div.style.display === "block") {
+                div.style.display = "none";
+            }
+        }
 
         document.getElementById('file-input').addEventListener('change', handleFile);
         function handleFile(event) {
+            hideDiv("chart-container");
+            showDiv("chart-container-placeholder");
             writeToLog("~~~~~~~~~~~~~~~ New file selected ~~~~~~~~~~~~~~~");
             var file = event.target.files[0];
             if (!file) return;
@@ -132,8 +164,6 @@
             };
             reader.readAsText(file);
         }
-
-        // ----------------------------------
 
         async function loadAndRunScript(data) {
             await loadPyodideAndRun();
@@ -158,11 +188,11 @@
 
                 var result = await pyodideInstance.runPythonAsync(pythonScript);
                 writeToLog("Execution complete!");
-                //document.getElementById("output").textContent += "<br>"+result;
             
                 let echartData = pyodideInstance.globals.get('OUTPUT_DATA');
-                //alert(echartData);
                 writeToLog("Building chart...");
+                hideDiv("chart-container-placeholder");
+                showDiv("chart-container");
                 renderChart(JSON.parse(echartData));
                 writeToLog("Chart built!");
                 writeToLog("Finished. Scroll down to view the rendered chart");

@@ -30,7 +30,7 @@ LOW_STYLE = { "color": '#ffe333', "borderWidth": 2 }
 MEDIUM_STYLE = { "color": '#ff9933', "borderWidth": 2 }
 HIGH_STYLE = { "color": '#ff4633', "borderWidth": 2 }
 CRITICAL_STYLE = { "color": '#a10a0a', "borderWidth": 2 }
-TRANSITIVE_VULN_STYLE = { "color": '#bebebe', "borderWidth": 2 }
+TRANSITIVE_VULN_STYLE = { "color": '#b315f8', "borderWidth": 2 }
 
 
 STYLES = {"critical": CRITICAL_STYLE,
