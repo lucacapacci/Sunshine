@@ -44,24 +44,44 @@ STYLES = {"critical": CRITICAL_STYLE,
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
-    <head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">  
-      <title>SBOM</title>
-      <style>
-* {
-  margin: 0;
-  padding: 0;
-}
-#chart-container {
-  position: relative;
-  height: 100vh;
-  overflow: hidden;
-}
-      </style>
-    </head>
-    <body>
-      <div id="chart-container"></div>
-      <script src="https://fastly.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-      <script type="text/javascript">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sunshine - SBOM visualization tool</title>
+    <script src="https://fastly.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #chart-container {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            position: relative;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #table-container {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+
+<body>
+    <h1>Sunshine - SBOM visualization tool</h1>
+    <span>Analyzed CycloneDX JSON file: <i><FILE_NAME_HERE></i></span>
+
+    <h3>Components chart:</h3>
+    <div id="chart-container"></div>
+    <h3>Components table:</h3>
+    <div id="table-container"><table id="components-table"><TABLE_HERE></table></div>
+    <script type="text/javascript">
 var dom = document.getElementById('chart-container');
 var myChart = echarts.init(dom, null, {
   renderer: 'canvas',
@@ -71,7 +91,7 @@ var app = {};
 
 var option;
 
-const data = DATA_HERE;
+const data = <CHART_DATA_HERE>;
 
 option = {
   tooltip: {
@@ -406,7 +426,7 @@ def prepare_chart_element_name(component):
         name += "<br>"
         vulns = {}
         for vulnerability in component["vulnerabilities"]:
-            vulns[f'<li>{html.escape(vulnerability["id"])} ({html.escape(vulnerability["severity"])})</li>'] = VALID_SEVERITIES[vulnerability["severity"]]
+            vulns[f'<li>{html.escape(vulnerability["id"])} ({html.escape(vulnerability["severity"].title())})</li>'] = VALID_SEVERITIES[vulnerability["severity"]]
 
         vulns = dict(sorted(vulns.items(), key=lambda item: item[1], reverse=True))
 
@@ -509,6 +529,56 @@ def double_check_if_all_components_were_taken_into_account(components, echart_da
             add_root_component(components, component, echart_data, bom_ref)
 
 
+def build_table_content(components):
+    rows = ["<tr><th>Name</th><th>Version</th><th>Depends on</th><th>Dependency of</th><th>Vulnerabilities</th><th>Max vulnerability severity</th></tr>"]
+    for bom_ref, component in components.items():
+        new_row = "<tr>"
+
+        new_row += "<td>" + html.escape(component["name"]) + "</td>"
+
+        new_row += "<td>" + html.escape(component["version"]) + "</td>"
+
+        if len(component["depends_on"]) == 0:
+            new_row += "<td>-</td>"
+        else:
+            new_row += "<td>"
+            for depends_on in component["depends_on"]:
+                component_depends_on = components[depends_on]
+                new_row += "<li>" + html.escape(component_depends_on["name"]) + " " + html.escape(component_depends_on["version"]) + "</li>"
+            new_row += "</td>"
+
+        if len(component["dependency_of"]) == 0:
+            new_row += "<td>-</td>"
+        else:
+            new_row += "<td>"
+            for dependency_of in component["dependency_of"]:
+                component_dependency_of = components[dependency_of]
+                new_row += "<li>" + html.escape(component_dependency_of["name"]) + " " + html.escape(component_dependency_of["version"]) + "</li>"
+            new_row += "</td>"
+
+        if len(component["vulnerabilities"]) == 0:
+            new_row += "<td>-</td>"
+        else:
+            vulns = {}
+            for vulnerability in component["vulnerabilities"]:
+                vulns[f'<li>{html.escape(vulnerability["id"])} ({html.escape(vulnerability["severity"].title())})</li>'] = VALID_SEVERITIES[vulnerability["severity"]]
+            vulns = dict(sorted(vulns.items(), key=lambda item: item[1], reverse=True))
+            vulns_to_be_shown = list(vulns.keys())
+            new_row += "<td>" + "".join(vulns_to_be_shown) + "</td>"
+
+        if component["max_vulnerability_severity"] == "clean":
+            new_row += "<td>-</td>"
+        else:
+            new_row += "<td>" + html.escape(component["max_vulnerability_severity"].title()) + "</td>"
+
+
+        new_row += "</tr>"
+
+        rows.append(new_row)
+
+    return "".join(rows)
+
+
 def write_output_file(html_content, output_file_path):
     with open(output_file_path, "w") as text_file:
         text_file.write(html_content)
@@ -527,8 +597,13 @@ def main_cli(input_file_path, output_file_path):
 
     echart_data = build_echarts_data(components)
     double_check_if_all_components_were_taken_into_account(components, echart_data)
+
+    table_content = build_table_content(components)
     
-    html_content = HTML_TEMPLATE.replace("DATA_HERE", json.dumps(echart_data, indent=2))
+    html_content = HTML_TEMPLATE.replace("<CHART_DATA_HERE>", json.dumps(echart_data, indent=2))
+    html_content = html_content.replace("<FILE_NAME_HERE>", os.path.basename(input_file_path))
+    html_content = html_content.replace("<TABLE_HERE>", table_content)
+    
     write_output_file(html_content, output_file_path)
     custom_print("Done.")
 
@@ -542,9 +617,11 @@ def main_web(input_string):
 
     echart_data = build_echarts_data(components)
     double_check_if_all_components_were_taken_into_account(components, echart_data)
+
+    echart_data = json.dumps(echart_data, indent=2)
+    table_content = build_table_content(components)
     
-    #html_content = HTML_TEMPLATE.replace("DATA_HERE", json.dumps(echart_data, indent=2))
-    return json.dumps(echart_data, indent=2)
+    return echart_data, table_content
 
 
 if __name__ == "__main__":
@@ -574,6 +651,7 @@ if __name__ == "__main__":
 
 
 if __name__ == "__web__":
-    echart_data = main_web(INPUT_DATA)
-    OUTPUT_DATA = echart_data
+    echart_data, table_content = main_web(INPUT_DATA)
+    OUTPUT_CHART_DATA = echart_data
+    OUTPUT_TABLE_DATA = table_content
 

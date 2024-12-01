@@ -29,8 +29,20 @@
             height: 100vh;
             overflow: hidden;
         }
-
         #chart-container-placeholder {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        #table-container {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        #table-container-placeholder {
             background-color: #f4f4f4;
             padding: 10px;
             border: 1px solid #ddd;
@@ -45,12 +57,19 @@
 <body>
     <h1>Sunshine - SBOM visualization tool</h1>
     <span>Select a CycloneDX JSON file:</span><input type="file" id="file-input" accept=".json">
-    <h3>Chart:</h3>
+    <h3>Components chart:</h3>
     <div id="chart-container" style="display: none">
         Chart will appear here...
     </div>
     <div id="chart-container-placeholder" style="display: block">
         Chart will appear here...
+    </div>
+    <h3>Components table:</h3>
+    <div id="table-container" style="display: none">
+        <table id="components-table"></table>
+    </div>
+    <div id="table-container-placeholder" style="display: block">
+        Table will appear here...
     </div>
     <h3>Log:</h3>
     <div id="output">Log will appear here...</div>
@@ -165,6 +184,12 @@
             reader.readAsText(file);
         }
 
+        function renderTable(tableContent) {
+            document.getElementById("components-table").innerHTML = tableContent;
+            showDiv("table-container");
+            hideDiv("table-container-placeholder");
+        }
+
         async function loadAndRunScript(data) {
             await loadPyodideAndRun();
 
@@ -189,13 +214,15 @@
                 var result = await pyodideInstance.runPythonAsync(pythonScript);
                 writeToLog("Execution complete!");
             
-                let echartData = pyodideInstance.globals.get('OUTPUT_DATA');
+                let echartData = pyodideInstance.globals.get('OUTPUT_CHART_DATA');
                 writeToLog("Building chart...");
                 hideDiv("chart-container-placeholder");
                 showDiv("chart-container");
                 renderChart(JSON.parse(echartData));
                 writeToLog("Chart built!");
-                writeToLog("Finished. Scroll down to view the rendered chart");
+                let tableContent = pyodideInstance.globals.get('OUTPUT_TABLE_DATA');
+                renderTable(tableContent);
+                writeToLog("Finished.");
             }
         }
     </script>
