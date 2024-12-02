@@ -192,20 +192,28 @@
             reader.readAsText(file);
         }
 
+        var table = null;
+
         function renderTable(tableContent) {
             document.getElementById("components-table").innerHTML = tableContent;
-            let table = $('#components-table').DataTable({
-                dom: 'Bfrtip',
-                buttons: [
-                    'copy', 'csv', 'excel', 'pdf', 'print'
-                ]
-            });
+            if (table) {
+                table.destroy();
+                table = null;
+            }
+            if (!table) {
+                table = $('#components-table').DataTable({
+                    dom: 'Bfrtip',
+                    buttons: [
+                        'copy', 'csv', 'excel', 'pdf', 'print'
+                    ]
+                });
 
-            $('#components-table thead input').on('keyup change', function () {
-                let columnIndex = $(this).parent().index();
-                table.column(columnIndex).search(this.value).draw();
-            });
-            
+                $('#components-table thead input').on('keyup change', function () {
+                    let columnIndex = $(this).parent().index();
+                    table.column(columnIndex).search(this.value).draw();
+                });
+            }
+
             showDiv("table-container");
             hideDiv("table-container-placeholder");
         }

@@ -24,13 +24,13 @@ VALID_SEVERITIES = {"critical": 4,
                     "clean": -1}
 
 
-BASIC_STYLE = { "color": '#7dd491', "borderWidth": 2 }
-INFORMATION_STYLE = { "color": '#63f5fc', "borderWidth": 2 }
+BASIC_STYLE = { "color": '#bcbcbc', "borderWidth": 2 }
+INFORMATION_STYLE = { "color": '#7dd491', "borderWidth": 2 }
 LOW_STYLE = { "color": '#ffe333', "borderWidth": 2 }
 MEDIUM_STYLE = { "color": '#ff9933', "borderWidth": 2 }
 HIGH_STYLE = { "color": '#ff4633', "borderWidth": 2 }
 CRITICAL_STYLE = { "color": '#a10a0a', "borderWidth": 2 }
-TRANSITIVE_VULN_STYLE = { "color": '#b315f8', "borderWidth": 2 }
+TRANSITIVE_VULN_STYLE = { "color": '#9fc5e8', "borderWidth": 2 }
 
 
 STYLES = {"critical": CRITICAL_STYLE,
