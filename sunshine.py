@@ -48,6 +48,14 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sunshine - SBOM visualization tool</title>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
     <script src="https://fastly.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
     <style>
         body {
@@ -80,7 +88,7 @@ HTML_TEMPLATE = """
     <h3>Components chart:</h3>
     <div id="chart-container"></div>
     <h3>Components table:</h3>
-    <div id="table-container"><table id="components-table"><TABLE_HERE></table></div>
+    <div id="table-container"><table id="components-table" class="display stripe"><TABLE_HERE></table></div>
     <script type="text/javascript">
 var dom = document.getElementById('chart-container');
 var myChart = echarts.init(dom, null, {
@@ -120,6 +128,18 @@ if (option && typeof option === 'object') {
 }
 
 window.addEventListener('resize', myChart.resize);
+
+let table = $('#components-table').DataTable({
+    dom: 'Bfrtip',
+    buttons: [
+        'copy', 'csv', 'excel', 'pdf', 'print'
+    ]
+});
+
+$('#components-table thead input').on('keyup change', function () {
+    let columnIndex = $(this).parent().index();
+    table.column(columnIndex).search(this.value).draw();
+});
       </script>
     </body>
 </html>
@@ -530,7 +550,7 @@ def double_check_if_all_components_were_taken_into_account(components, echart_da
 
 
 def build_table_content(components):
-    rows = ["<tr><th>Name</th><th>Version</th><th>Depends on</th><th>Dependency of</th><th>Vulnerabilities</th><th>Max vulnerability severity</th></tr>"]
+    rows = ['<thead><tr><th>Name</th><th>Version</th><th>Depends on</th><th>Dependency of</th><th>Vulnerabilities</th><th>Max vulnerability severity</th></tr><tr><th><input type="text" placeholder="Search Name"></th><th><input type="text" placeholder="Search Version"></th><th><input type="text" placeholder="Search Depends on"></th><th><input type="text" placeholder="Search Dependency of"></th><th><input type="text" placeholder="Search Vulnerabilities"></th><th><input type="text" placeholder="Max vulnerability severity"></th></tr></thead>']
     for bom_ref, component in components.items():
         new_row = "<tr>"
 
