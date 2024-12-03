@@ -48,25 +48,21 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sunshine - SBOM visualization tool</title>
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.11/css/jquery.dataTables.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.11/js/jquery.dataTables.min.js"></script>
     <script src="https://fastly.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
+            background-color: #d1e2e3;
         }
         #output {
             white-space: pre-line;
-            background-color: #f4f4f4;
+            background-color: #ffffff;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -74,7 +70,7 @@ HTML_TEMPLATE = """
             font-family: "Courier New", "Lucida Console", monospace;
         }
         #chart-container {
-            background-color: #f4f4f4;
+            background-color: #ffffff;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -83,20 +79,20 @@ HTML_TEMPLATE = """
             overflow: hidden;
         }
         #chart-container-placeholder {
-            background-color: #f4f4f4;
+            background-color: #ffffff;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
 
         #table-container {
-            background-color: #f4f4f4;
+            background-color: #ffffff;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
         #table-container-placeholder {
-            background-color: #f4f4f4;
+            background-color: #ffffff;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -589,7 +585,7 @@ def double_check_if_all_components_were_taken_into_account(components, echart_da
 
 
 def build_table_content(components):
-    rows = ['<thead><tr><th>Name</th><th>Version</th><th>Depends on</th><th>Dependency of</th><th>Vulnerabilities</th><th>Max vulnerability severity</th></tr><tr><td><input type="text" placeholder="Search Name" class="form-control"></th><th><input type="text" placeholder="Search Version" class="form-control"></th><th><input type="text" placeholder="Search Depends on" class="form-control"></th><th><input type="text" placeholder="Search Dependency of" class="form-control"></th><th><input type="text" placeholder="Search Vulnerabilities" class="form-control"></th><th><input type="text" placeholder="Search Max vulnerability severity" class="form-control"></th></tr></thead>']
+    rows = ['<thead><tr><th>Name</th><th>Version</th><th>Depends on</th><th>Dependency of</th><th>Vulnerabilities</th><th>Max severity</th></tr><tr><td><input type="text" placeholder="Search Name" class="form-control"></th><th><input type="text" placeholder="Search Version" class="form-control"></th><th><input type="text" placeholder="Search Depends on" class="form-control"></th><th><input type="text" placeholder="Search Dependency of" class="form-control"></th><th><input type="text" placeholder="Search Vulnerabilities" class="form-control"></th><th><input type="text" placeholder="Search Max severity" class="form-control"></th></tr></thead>']
     rows.append("<tbody>")
     for bom_ref, component in components.items():
         new_row = "<tr>"
@@ -602,18 +598,22 @@ def build_table_content(components):
             new_row += "<td>-</td>"
         else:
             new_row += "<td>"
+            depends_on_components_list = []
             for depends_on in component["depends_on"]:
                 component_depends_on = components[depends_on]
-                new_row += "<li>" + html.escape(component_depends_on["name"]) + " " + html.escape(component_depends_on["version"]) + "</li>"
+                depends_on_components_list.append('<span class="badge text-bg-secondary">' + html.escape(component_depends_on["name"]) + " " + html.escape(component_depends_on["version"]) + "</span>")
+            new_row += "<br>".join(depends_on_components_list)
             new_row += "</td>"
 
         if len(component["dependency_of"]) == 0:
             new_row += "<td>-</td>"
         else:
             new_row += "<td>"
+            dependency_of_components_list = []
             for dependency_of in component["dependency_of"]:
                 component_dependency_of = components[dependency_of]
-                new_row += "<li>" + html.escape(component_dependency_of["name"]) + " " + html.escape(component_dependency_of["version"]) + "</li>"
+                dependency_of_components_list.append('<span class="badge text-bg-secondary">' + html.escape(component_dependency_of["name"]) + " " + html.escape(component_dependency_of["version"]) + "</span>")
+            new_row += "<br>".join(dependency_of_components_list)
             new_row += "</td>"
 
         if len(component["vulnerabilities"]) == 0:
