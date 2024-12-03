@@ -79,7 +79,7 @@ HTML_TEMPLATE = """
             border: 1px solid #ddd;
             border-radius: 4px;
             position: relative;
-            height: 100vh;
+            height: 80vh;
             overflow: hidden;
         }
         #chart-container-placeholder {
@@ -150,7 +150,7 @@ option = {
         },
     },
   series: {
-    radius: ['15%', '80%'],
+    radius: ['15%', '90%'],
     type: 'sunburst',
     sort: undefined,
     emphasis: {

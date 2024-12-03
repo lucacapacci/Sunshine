@@ -36,7 +36,7 @@
             border: 1px solid #ddd;
             border-radius: 4px;
             position: relative;
-            height: 100vh;
+            height: 90vh;
             overflow: hidden;
         }
         #chart-container-placeholder {
@@ -148,7 +148,7 @@
                     },
                 },
               series: {
-                radius: ['15%', '80%'],
+                radius: ['15%', '90%'],
                 type: 'sunburst',
                 sort: undefined,
                 emphasis: {
@@ -194,11 +194,11 @@
 
         document.getElementById('file-input').addEventListener('change', handleFile);
         function handleFile(event) {
+            var file = event.target.files[0];
+            if (!file) return;
             hideDiv("chart-container");
             showDiv("chart-container-placeholder");
             writeToLog("~~~~~~~~~~~~~~~ New file selected ~~~~~~~~~~~~~~~");
-            var file = event.target.files[0];
-            if (!file) return;
             var reader = new FileReader();
             reader.onload = function(e) {
                 try {
