@@ -48,17 +48,25 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sunshine - SBOM visualization tool</title>
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.11/css/jquery.dataTables.min.css">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.11/js/jquery.dataTables.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.8/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.8/vfs_fonts.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
     <script src="https://fastly.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
     <style>
         body {
-            font-family: Arial, sans-serif;
             margin: 20px;
-            background-color: #d1e2e3;
+            height: 100vh;
+            background: linear-gradient(to right, #032c57, #1C538E);
         }
         #output {
             white-space: pre-line;
@@ -75,24 +83,24 @@ HTML_TEMPLATE = """
             border: 1px solid #ddd;
             border-radius: 4px;
             position: relative;
-            height: 80vh;
+            height: 90vh;
             overflow: hidden;
         }
         #chart-container-placeholder {
-            background-color: #ffffff;
+            background-color: #fffffF;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
 
         #table-container {
-            background-color: #ffffff;
+            background-color: #fffffF;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
         #table-container-placeholder {
-            background-color: #ffffff;
+            background-color: #fffffF;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -113,19 +121,39 @@ HTML_TEMPLATE = """
         .dataTables_length {
             padding-bottom: 10px !important;
         }
+        .light-text {
+            color: #baccde;
+        }
+
+        .dt-buttons {
+            float: right;
+        }
+        .active>.page-link, .page-link.active {
+            background-color: #1C538E !important;
+            color: white !important;
+        }
+
+        .page-link {
+            color: #1C538E;
+        }
+
+        #components-table_paginate {
+            float: right;
+            margin-top: -33px;
+        }
     </style>
 </head>
 
 
 <body>
-    <h1>Sunshine - SBOM visualization tool</h1>
+    <h1 class="light-text">Sunshine - SBOM visualization tool</h1>
     <br>
-    <span>Analyzed CycloneDX JSON file: <i><FILE_NAME_HERE></i></span>
+    <span  class="light-text">Analyzed CycloneDX JSON file: <i><FILE_NAME_HERE></i></span>
     <br><br>
-    <h3>Components chart:</h3>
+    <h3  class="light-text">Components chart</h3>
     <div id="chart-container"></div>
     <br>
-    <h3>Components table:</h3>
+    <h3  class="light-text">Components table</h3>
     <div id="table-container"><table id="components-table" class="table table-striped table-bordered" style="width:100%"><TABLE_HERE></table></div>
     <script type="text/javascript">
 var dom = document.getElementById('chart-container');
@@ -168,14 +196,30 @@ if (option && typeof option === 'object') {
 window.addEventListener('resize', myChart.resize);
 
 let table = $('#components-table').DataTable({
+    "order": [[ 1, "asc" ]],
+    pageLength: 10,
+    dom: 'Blfrtip',
+    lengthMenu: [
+        [10, 25, 50, -1],
+        [10, 25, 50, 'All']
+    ],
+    buttons: [
+      { extend: 'copy', className: 'btn btn-dark mb-3 btn-sm' },
+      { extend: 'csv', className: 'btn btn-secondary mb-3 btn-sm' },
+      { extend: 'excel', className: 'btn btn-success mb-3 btn-sm' },
+      { extend: 'pdf', className: 'btn btn-danger mb-3 btn-sm' },
+      { extend: 'print', className: 'btn btn-info mb-3 btn-sm' }
+    ],
     orderCellsTop: true,
-});
+    "autoWidth": true
+  });
 
 $('#components-table thead input').on('keyup change', function () {
     let columnIndex = $(this).parent().index();
     table.column(columnIndex).search(this.value).draw();
 });
       </script>
+      <br><br>
     </body>
 </html>
 """
@@ -291,8 +335,69 @@ def get_bom_ref(component_json, all_bom_refs):
     return bom_ref
 
 
+def create_or_update_bom_ref_entry(bom_refs, component):
+    if component["bom-ref"] not in bom_refs:
+        bom_refs[component["bom-ref"]] = {"name": component["name"] if "name" in component else "-", 
+                                          "version": component["version"] if "version" in component else "-"}
+    else:
+        if bom_refs[component["bom-ref"]]["name"] == "-" and "name" in component:
+            bom_refs[component["bom-ref"]]["name"] = component["name"]
+        if bom_refs[component["bom-ref"]]["version"] == "-" and "version" in component:
+            bom_refs[component["bom-ref"]]["version"] = component["version"]
+
+
+def normalize_bom_ref(bom_refs, bom_ref, only_valid_components=True):
+    for component_bom_ref, component_data in bom_refs.items():
+        if only_valid_components is False:
+            if bom_ref == component_bom_ref:
+                return bom_ref
+        else:
+            if bom_ref == component_bom_ref and component_data["name"] != "-" and component_data["version"] != "-":
+                return bom_ref
+
+    for component_bom_ref, component_data in bom_refs.items():
+        # look with version
+        guessed_name_01 = f'{component_data["name"]}@{component_data["version"]}'
+        guessed_name_02 = f'{component_data["name"]}::{component_data["version"]}'
+        guessed_name_03 = f'{component_data["name"]}:{component_data["version"]}'
+
+        for test in [guessed_name_01, guessed_name_02, guessed_name_03]:
+            if bom_ref.endswith(f"/{test}"):
+                return bom_ref
+            if bom_ref.endswith(f"/{test}:"):
+               return bom_ref
+            if bom_ref.endswith(f":{test}"):
+                return bom_ref
+            if bom_ref.endswith(f":{test}:"):
+                return bom_ref
+
+    number_of_results = 0
+    result = None
+    for component_bom_ref, component_data in bom_refs.items():
+        # look without version        
+        if f'/{component_data["name"]}@' in bom_ref:
+            number_of_results += 1
+            result = component_bom_ref
+        elif f'/{component_data["name"]}:' in bom_ref:
+            number_of_results += 1
+            result = component_bom_ref
+        elif f':{component_data["name"]}:' in bom_ref:
+            number_of_results += 1
+            result = component_bom_ref
+        elif f':{component_data["name"]}@' in bom_ref:
+            number_of_results += 1
+            result = component_bom_ref
+    if number_of_results == 1:  # I want just one result, otherwise it means the sbom is ambiguous and I can't make any educated guess
+        return result
+
+    return None
+
+def has_bom_ref_components(bom_refs, bom_ref, only_valid_components=False):
+    return normalize_bom_ref(bom_refs, bom_ref) is not None
+
+
 def get_all_bom_refs(data):
-    bom_refs = set()
+    bom_refs = {}
     meta_bom_ref_is_used = False
 
     root_keywords = []
@@ -304,34 +409,38 @@ def get_all_bom_refs(data):
     for root_keyword in root_keywords:
         for component in data[root_keyword]:
             if "bom-ref" in component:
-                bom_refs.add(component["bom-ref"])
+                create_or_update_bom_ref_entry(bom_refs, component)
 
+            if root_keyword == "services":
+                component_with_services = component
+                while "services" in component_with_services:
+                    for sub_component in component_with_services["services"]:
+                        if "bom-ref" in sub_component:
+                            create_or_update_bom_ref_entry(bom_refs, sub_component)
+                        component_with_services = sub_component
+
+    for root_keyword in root_keywords:
+        for component in data[root_keyword]:
             if "dependencies" in component:
                 for dependency in component["dependencies"]:
                     if "ref" in dependency:
-                        bom_refs.add(dependency["ref"])
-
-            if root_keyword == "services":
-                if "services" in component:
-                    for sub_component in component["services"]:
-                        if "bom-ref" in sub_component:
-                            bom_refs.add(sub_component["bom-ref"])
+                        create_or_update_bom_ref_entry(bom_refs, {"bom-ref":  dependency["ref"]})
 
     if "dependencies" in data:
         for dependency in data["dependencies"]:
             if "ref" in dependency:
-                bom_refs.add(dependency["ref"])
+                create_or_update_bom_ref_entry(bom_refs, {"bom-ref":  dependency["ref"]})
 
             if "dependsOn" in dependency:
                 for depends_on in dependency["dependsOn"]:
-                    bom_refs.add(depends_on)
+                    create_or_update_bom_ref_entry(bom_refs, {"bom-ref":  depends_on})
 
     if "metadata" in data:
         if "component" in data["metadata"]:
             if "bom-ref" in data["metadata"]["component"]:
-                if data["metadata"]["component"]["bom-ref"] in bom_refs:
+                if has_bom_ref_components(bom_refs, data["metadata"]["component"]["bom-ref"]):
                     meta_bom_ref_is_used = True
-                bom_refs.add(data["metadata"]["component"]["bom-ref"])
+                    create_or_update_bom_ref_entry(bom_refs, data["metadata"]["component"])
 
     return bom_refs, meta_bom_ref_is_used
 
@@ -403,8 +512,14 @@ def parse_json_data(data):
                 for dependency in component["dependencies"]:
                     depends_on = dependency["ref"]
                     if depends_on not in components:
-                        custom_print(f"WARNING: 'ref' '{depends_on}' is used in 'dependencies' inside a component but it's not declared in 'components'. I'll create a fake one.")
-                        components[depends_on] = create_fake_component(depends_on)
+                        custom_print(f"WARNING: 'ref' '{depends_on}' is used in 'dependencies' inside a component but it's not declared in 'components'. I'll search for a match...")
+                        guessed_bom_ref = normalize_bom_ref(all_bom_refs, depends_on)
+                        if guessed_bom_ref is None:
+                            custom_print(f"Match not found. I'll create a fake one.")
+                            components[depends_on] = create_fake_component(depends_on)
+                        else:
+                            custom_print(f"Match found: {guessed_bom_ref}")
+                            depends_on = guessed_bom_ref
 
                     components[bom_ref]["depends_on"].add(depends_on)
                     components[depends_on]["dependency_of"].add(bom_ref)
@@ -427,14 +542,26 @@ def parse_json_data(data):
         for dependency in data["dependencies"]:
             bom_ref = dependency["ref"]
             if bom_ref not in components:
-                custom_print(f"WARNING: 'ref' '{bom_ref}' is used in 'dependencies' but it's not declared in 'components'. I'll create a fake one.")
-                components[bom_ref] = create_fake_component(bom_ref)
+                custom_print(f"WARNING: 'ref' '{bom_ref}' is used in 'dependencies' but it's not declared in 'components'. I'll search for a match...")
+                guessed_bom_ref = normalize_bom_ref(all_bom_refs, bom_ref)
+                if guessed_bom_ref is None:
+                    custom_print(f"Match not found. I'll create a fake one.")
+                    components[bom_ref] = create_fake_component(bom_ref)
+                else:
+                    custom_print(f"Match found: {guessed_bom_ref}")
+                    bom_ref = guessed_bom_ref
 
             if "dependsOn" in dependency:
                 for depends_on in dependency["dependsOn"]:
                     if depends_on not in components:
-                        custom_print(f"WARNING: 'dependsOn' '{depends_on}' is used in 'dependencies' but it's not declared in 'components'. I'll create a fake one.")
-                        components[depends_on] = create_fake_component(depends_on)
+                        custom_print(f"WARNING: 'dependsOn' '{depends_on}' is used in 'dependencies' but it's not declared in 'components'. I'll search for a match...")
+                        guessed_bom_ref = normalize_bom_ref(all_bom_refs, depends_on)
+                        if guessed_bom_ref is None:
+                            custom_print(f"Match not found. I'll create a fake one.")
+                            components[depends_on] = create_fake_component(depends_on)
+                        else:
+                            custom_print(f"Match found: {guessed_bom_ref}")
+                            depends_on = guessed_bom_ref
 
                     components[bom_ref]["depends_on"].add(depends_on)
                     components[depends_on]["dependency_of"].add(bom_ref)
@@ -601,8 +728,13 @@ def build_table_content(components):
             depends_on_components_list = []
             for depends_on in component["depends_on"]:
                 component_depends_on = components[depends_on]
-                depends_on_components_list.append('<span class="badge text-bg-secondary">' + html.escape(component_depends_on["name"]) + " " + html.escape(component_depends_on["version"]) + "</span>")
-            new_row += "<br>".join(depends_on_components_list)
+                component_depends_on_display = ""
+                component_depends_on_display += '<span class="badge text-bg-secondary">' + html.escape(component_depends_on["name"])
+                if component_depends_on["version"] != "-":
+                    component_depends_on_display += " " + html.escape(component_depends_on["version"]) + "</span>"
+                depends_on_components_list.append(component_depends_on_display)
+
+            new_row += '<span style="display: none;">, </span><br>'.join(depends_on_components_list)
             new_row += "</td>"
 
         if len(component["dependency_of"]) == 0:
@@ -612,8 +744,12 @@ def build_table_content(components):
             dependency_of_components_list = []
             for dependency_of in component["dependency_of"]:
                 component_dependency_of = components[dependency_of]
-                dependency_of_components_list.append('<span class="badge text-bg-secondary">' + html.escape(component_dependency_of["name"]) + " " + html.escape(component_dependency_of["version"]) + "</span>")
-            new_row += "<br>".join(dependency_of_components_list)
+                component_dependency_of_display = ""
+                component_dependency_of_display += '<span class="badge text-bg-secondary">' + html.escape(component_dependency_of["name"])
+                if component_dependency_of["version"] != "-":
+                    component_dependency_of_display += " " + html.escape(component_dependency_of["version"]) + "</span>"
+                dependency_of_components_list.append(component_dependency_of_display)
+            new_row += '<span style="display: none;">, </span><br>'.join(dependency_of_components_list)
             new_row += "</td>"
 
         if len(component["vulnerabilities"]) == 0:
@@ -651,11 +787,12 @@ def main_cli(input_file_path, output_file_path):
         custom_print(f"File does not exist: '{input_file_path}'")
         exit()
 
-    try:
+    components = parse_file(input_file_path)
+    """try:
         components = parse_file(input_file_path)
     except Exception as e:
         custom_print(f"Error parsing input file: {e}")
-        exit()
+        exit()"""
 
     echart_data = build_echarts_data(components)
     double_check_if_all_components_were_taken_into_account(components, echart_data)
