@@ -35,11 +35,18 @@
             margin-top: 10px;
             font-family: "Courier New", "Lucida Console", monospace;
         }
+
         #chart-container {
             background-color: #ffffff;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
+            position: relative;
+        }
+
+        #chart-container-inner {
+            background-color: #ffffff;
+            padding: 10px;
             position: relative;
             height: 90vh;
             overflow: hidden;
@@ -100,6 +107,22 @@
             margin-top: -33px;
         }
 
+        .bg-dark-red {
+            background-color: #a10a0a;
+            color: white;
+        }
+
+        .bg-orange {
+            background-color: #ff9335;
+            color: white;
+        }
+
+        .bg-yellow {
+            background-color: #fccd58;
+            color: white;
+        }
+        
+
     </style>
 </head>
 <body>
@@ -110,14 +133,36 @@
     <br>
     <h3 class="light-text">Components chart</h3>
     <div id="chart-container" style="display: none">
-        Chart will appear here...
+    This chart visualizes components and their dependencies, with each segment representing a single component. The chart provides a hierarchical view of the dependency structure, with relationships radiating outward from the core components.<br>
+    <ul>
+        <li><b>Innermost circle:</b> represents components that are independent and not dependencies for any other components.</li>
+        <li><b>Outer circles:</b> each segment represents a dependency of the corresponding segment in the circle immediately inside it. The farther a segment is from the center, the deeper the dependency level.</li>
+    </ul>
+    <i>Note: If there is only one circle, it means that no dependency relationships are defined in the input file.</i>
+    <br><br>
+    The colors of the segments indicate the vulnerability status of the components:
+    <ul>
+        <li><b>Dark red:</b> affected by at least one critical severity vulnerability.</li>
+        <li><b>Red:</b> affected by at least one high severity vulnerability.</li>
+        <li><b>Orange:</b> affected by at least one medium severity vulnerability.</li>  
+        <li><b>Yellow:</b> affected by at least one low severity vulnerability.</li>  
+        <li><b>Green:</b> affected by at least one informational severity vulnerability.</li>  
+        <li><b>Light blue:</b> not directly affected but has at least one vulnerable dependency.</li>  
+        <li><b>Grey:</b> neither the component nor its dependencies are affected by any vulnerabilities.</li>
+    </ul>
+    The chart is interactive:  
+    <ul>
+        <li><b>Hovering:</b> displays details about a component, including its name, version, and list of vulnerabilities.</li>
+        <li><b>Clicking:</b> refocuses the chart. The clicked segment becomes the center (second innermost circle), showing only that component and its dependencies. In this view, the innermost circle is always blue. Clicking the blue circle navigates back up one level in the dependency hierarchy.</li>
+    </ul>
+    <div id="chart-container-inner"></div>
     </div>
     <div id="chart-container-placeholder" style="display: block">
         Chart will appear here...
     </div>
     <br>
     <h3 class="light-text">Components table</h3>
-    <div id="table-container" style="display: none">
+    <div id="table-container" style="display: none;">
         <table id="components-table" class="table table-striped table-bordered" style="width:100%"></table>
     </div>
     <div id="table-container-placeholder" style="display: block">
@@ -159,7 +204,7 @@
         }
 
         function renderChart(data) {
-            var dom = document.getElementById('chart-container');
+            var dom = document.getElementById('chart-container-inner');
             var myChart = echarts.init(dom, null, {
               renderer: 'canvas',
               useDirtyRect: false
@@ -248,7 +293,7 @@
             }
             if (!table) {
                 table = $('#components-table').DataTable({
-                    "order": [[ 1, "asc" ]],
+                    "order": [[ 0, "asc" ]],
                     pageLength: 10,
                     dom: 'Blfrtip',
                     lengthMenu: [
@@ -260,20 +305,46 @@
                       { extend: 'csv', className: 'btn btn-secondary mb-3 btn-sm' },
                       { extend: 'excel', className: 'btn btn-success mb-3 btn-sm' },
                       { extend: 'pdf', className: 'btn btn-danger mb-3 btn-sm' },
-                      { extend: 'print', className: 'btn btn-info mb-3 btn-sm' }
+                      { extend: 'print', className: 'btn btn-info mb-3 btn-sm', 
+                        customize: function (win) {
+                            $(win.document.body).css('font-size', '10pt');
+                            $(win.document.body).find('table').addClass('compact').css('font-size', 'inherit');
+
+                            // Add landscape mode
+                            var css = '@page { size: landscape; }',
+                                head = win.document.head || win.document.getElementsByTagName('head')[0],
+                                style = win.document.createElement('style');
+
+                            style.type = 'text/css';
+                            style.media = 'print';
+
+                            if (style.styleSheet) {
+                                style.styleSheet.cssText = css;
+                            } else {
+                                style.appendChild(win.document.createTextNode(css));
+                            }
+                            head.appendChild(style);
+                        }
+                      }
                     ],
                     orderCellsTop: true,
-                    "autoWidth": true
+                    "autoWidth": true,
+                    scrollX: true
                   });
 
                 $('#components-table thead input').on('keyup change', function () {
                     let columnIndex = $(this).parent().index();
                     table.column(columnIndex).search(this.value).draw();
                 });
+
+                //table.columns.adjust();
             }
 
             showDiv("table-container");
             hideDiv("table-container-placeholder");
+
+            table.columns.adjust();
+
         }
 
         async function loadAndRunScript(data) {

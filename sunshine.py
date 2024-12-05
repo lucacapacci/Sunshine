@@ -23,14 +23,21 @@ VALID_SEVERITIES = {"critical": 4,
                     "information": 0,
                     "clean": -1}
 
+GREY = '#bcbcbc'
+GREEN = '#7dd491'
+YELLOW = '#fccd58'
+ORANGE = '#ff9335'
+RED = '#ff4633'
+DARK_RED = '#a10a0a'
+LIGHT_BLUE = '#9fc5e8'
 
-BASIC_STYLE = { "color": '#bcbcbc', "borderWidth": 2 }
-INFORMATION_STYLE = { "color": '#7dd491', "borderWidth": 2 }
-LOW_STYLE = { "color": '#ffe333', "borderWidth": 2 }
-MEDIUM_STYLE = { "color": '#ff9933', "borderWidth": 2 }
-HIGH_STYLE = { "color": '#ff4633', "borderWidth": 2 }
-CRITICAL_STYLE = { "color": '#a10a0a', "borderWidth": 2 }
-TRANSITIVE_VULN_STYLE = { "color": '#9fc5e8', "borderWidth": 2 }
+BASIC_STYLE = { "color": GREY, "borderWidth": 2 }
+INFORMATION_STYLE = { "color": GREEN, "borderWidth": 2 }
+LOW_STYLE = { "color": YELLOW, "borderWidth": 2 }
+MEDIUM_STYLE = { "color": ORANGE, "borderWidth": 2 }
+HIGH_STYLE = { "color": RED, "borderWidth": 2 }
+CRITICAL_STYLE = { "color": DARK_RED, "borderWidth": 2 }
+TRANSITIVE_VULN_STYLE = { "color": LIGHT_BLUE, "borderWidth": 2 }
 
 
 STYLES = {"critical": CRITICAL_STYLE,
@@ -711,15 +718,59 @@ def double_check_if_all_components_were_taken_into_account(components, echart_da
             add_root_component(components, component, echart_data, bom_ref)
 
 
+def component_badge_for_table(component):
+    component_on_display = ""
+    component_on_display += '<span class="badge text-bg-secondary">' + html.escape(component["name"])
+    if component["version"] != "-":
+        component_on_display += " " + html.escape(component["version"])
+    return component_on_display + "</span>"
+
+
+def vulnerability_badge_for_table(component):
+    vulns = {}
+    for vulnerability in component["vulnerabilities"]:
+        if vulnerability["severity"] == "critical":
+            badge_class = 'bg-dark-red'
+        elif vulnerability["severity"] == "high":
+            badge_class = 'bg-danger'
+        elif vulnerability["severity"] == "medium":
+            badge_class = 'bg-orange'
+        elif vulnerability["severity"] == "low":
+            badge_class = 'bg-yellow'
+        elif vulnerability["severity"] in ["information", "info"]:
+            badge_class = 'bg-success'
+
+        vulns[f'<span class="badge {badge_class}">{html.escape(vulnerability["severity"].title())} &#x2192; {html.escape(vulnerability["id"])}</span>'] = VALID_SEVERITIES[vulnerability["severity"]]
+    vulns = dict(sorted(vulns.items(), key=lambda item: item[1], reverse=True))
+    vulns_to_be_shown = list(vulns.keys())
+    return vulns_to_be_shown
+
+
 def build_table_content(components):
-    rows = ['<thead><tr><th>Name</th><th>Version</th><th>Depends on</th><th>Dependency of</th><th>Vulnerabilities</th><th>Max severity</th></tr><tr><td><input type="text" placeholder="Search Name" class="form-control"></th><th><input type="text" placeholder="Search Version" class="form-control"></th><th><input type="text" placeholder="Search Depends on" class="form-control"></th><th><input type="text" placeholder="Search Dependency of" class="form-control"></th><th><input type="text" placeholder="Search Vulnerabilities" class="form-control"></th><th><input type="text" placeholder="Search Max severity" class="form-control"></th></tr></thead>']
+    rows = ["""<thead>
+        <tr>
+            <th>Component</th>
+            <th>Depends on</th>
+            <th>Dependency of</th>
+            <th>Direct vulnerabilities</th>
+            <th>Transitive vulnerabilities</th>
+            <th>License</th>
+        </tr>
+        <tr>
+            <th><input type="text" placeholder="Search Component" class="form-control"></th>
+            <th><input type="text" placeholder="Search Depends on" class="form-control"></th>
+            <th><input type="text" placeholder="Search Dependency of" class="form-control"></th>
+            <th><input type="text" placeholder="Search Direct vulnerabilities" class="form-control"></th>
+            <th><input type="text" placeholder="Search Transitive vulnerabilities" class="form-control"></th>
+            <th><input type="text" placeholder="Search License" class="form-control"></th>
+        </tr>
+    </thead>"""]
     rows.append("<tbody>")
     for bom_ref, component in components.items():
         new_row = "<tr>"
 
-        new_row += "<td>" + html.escape(component["name"]) + "</td>"
+        new_row += "<td>" + component_badge_for_table(component) + "</td>"
 
-        new_row += "<td>" + html.escape(component["version"]) + "</td>"
 
         if len(component["depends_on"]) == 0:
             new_row += "<td>-</td>"
@@ -728,10 +779,7 @@ def build_table_content(components):
             depends_on_components_list = []
             for depends_on in component["depends_on"]:
                 component_depends_on = components[depends_on]
-                component_depends_on_display = ""
-                component_depends_on_display += '<span class="badge text-bg-secondary">' + html.escape(component_depends_on["name"])
-                if component_depends_on["version"] != "-":
-                    component_depends_on_display += " " + html.escape(component_depends_on["version"]) + "</span>"
+                component_depends_on_display = component_badge_for_table(component_depends_on)
                 depends_on_components_list.append(component_depends_on_display)
 
             new_row += '<span style="display: none;">, </span><br>'.join(depends_on_components_list)
@@ -744,10 +792,7 @@ def build_table_content(components):
             dependency_of_components_list = []
             for dependency_of in component["dependency_of"]:
                 component_dependency_of = components[dependency_of]
-                component_dependency_of_display = ""
-                component_dependency_of_display += '<span class="badge text-bg-secondary">' + html.escape(component_dependency_of["name"])
-                if component_dependency_of["version"] != "-":
-                    component_dependency_of_display += " " + html.escape(component_dependency_of["version"]) + "</span>"
+                component_dependency_of_display = component_badge_for_table(component_dependency_of)
                 dependency_of_components_list.append(component_dependency_of_display)
             new_row += '<span style="display: none;">, </span><br>'.join(dependency_of_components_list)
             new_row += "</td>"
@@ -755,18 +800,12 @@ def build_table_content(components):
         if len(component["vulnerabilities"]) == 0:
             new_row += "<td>-</td>"
         else:
-            vulns = {}
-            for vulnerability in component["vulnerabilities"]:
-                vulns[f'<li>{html.escape(vulnerability["id"])} ({html.escape(vulnerability["severity"].title())})</li>'] = VALID_SEVERITIES[vulnerability["severity"]]
-            vulns = dict(sorted(vulns.items(), key=lambda item: item[1], reverse=True))
-            vulns_to_be_shown = list(vulns.keys())
-            new_row += "<td>" + "".join(vulns_to_be_shown) + "</td>"
+            vulns_to_be_shown = vulnerability_badge_for_table(component)
+            new_row += "<td>" + '<span style="display: none;">, </span><br>'.join(vulns_to_be_shown) + "</td>"
 
-        if component["max_vulnerability_severity"] == "clean":
-            new_row += "<td>-</td>"
-        else:
-            new_row += "<td>" + html.escape(component["max_vulnerability_severity"].title()) + "</td>"
+        new_row += "<td>TODO TRANSITIVE VULNS</td>"
 
+        new_row += "<td>TODO LICENSES</td>"
 
         new_row += "</tr>\n"
 
