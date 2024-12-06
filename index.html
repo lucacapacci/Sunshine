@@ -71,6 +71,13 @@
             border-radius: 4px;
         }
 
+        #upload-file-container {
+            background-color: #fffffF;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
         #file-input {
             margin: 20px;
         }
@@ -148,7 +155,7 @@
     <h1 class="light-text">Sunshine - SBOM visualization tool</h1>
     <br>
     <h3 class="light-text">CycloneDX JSON file</h3>
-    <input type="file" id="file-input" class="form-control" style="width: 50%;" accept=".json">
+    <div id="upload-file-container">Select a file from your file system. All submitted data is processed locally within your browser, without being transmitted anywhere else.<input type="file" id="file-input" class="form-control" style="width: 50%;" accept=".json"></div>
     <br>
     <h3 class="light-text">Components chart</h3>
     <div id="chart-container" style="display: none">
@@ -191,7 +198,7 @@
     <h3 class="light-text">Log</h3>
     <div id="output">Log will appear here...</div>
     <br><br>
-    <div id="footer">Sunshine - SBOM visualization tool by <a href="https://www.linkedin.com/in/lucacapacci/">Luca Capacci</a> | <a href="https://github.com/lucacapacci/Sunshine/">GitHub repository with CLI version</a> | <a href="https://github.com/lucacapacci/Sunshine/blob/main/THIRD_PARTY_LICENSES">Third party licenses</a></div>
+    <div id="footer">Sunshine - SBOM visualization tool by <a href="https://www.linkedin.com/in/lucacapacci/">Luca Capacci</a> | <a href="https://github.com/lucacapacci/Sunshine/">GitHub repository with CLI version</a> | <a href="https://github.com/lucacapacci/Sunshine/blob/main/LICENSE">License</a> | <a href="https://github.com/lucacapacci/Sunshine/blob/main/THIRD_PARTY_LICENSES">Third party licenses</a></div>
     
 
     <script>
