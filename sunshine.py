@@ -617,7 +617,7 @@ def prepare_chart_element_name(component):
         for vulnerability in component["vulnerabilities"]:
             vulns[f'<li>{html.escape(vulnerability["id"])} ({html.escape(vulnerability["severity"].title())})</li>'] = VALID_SEVERITIES[vulnerability["severity"]]
 
-        vulns = dict(sorted(vulns.items(), key=lambda item: item[1], reverse=True))
+        vulns = dict(sorted(vulns.items(), key=lambda item: (-item[1], item[0])))
 
         vulns_to_be_shown = list(vulns.keys())
         if len(vulns_to_be_shown) > 10:
@@ -758,7 +758,7 @@ def vulnerability_badge_for_table(component):
             badge_class = 'bg-success'
 
         vulns[f'<span class="badge {badge_class}">{html.escape(vulnerability["severity"].title())} &#x2192; {html.escape(vulnerability["id"])}</span>'] = VALID_SEVERITIES[vulnerability["severity"]]
-    vulns = dict(sorted(vulns.items(), key=lambda item: item[1], reverse=True))
+    vulns = vulns = dict(sorted(vulns.items(), key=lambda item: (-item[1], item[0])))
     vulns_to_be_shown = list(vulns.keys())
     return vulns_to_be_shown
 
