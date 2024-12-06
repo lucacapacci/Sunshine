@@ -121,6 +121,11 @@
             background-color: #fccd58;
             color: white;
         }
+
+        .bg-light-blue {
+            background-color: #9fc5e8;
+            color: black;
+        }
         
 
     </style>
@@ -147,7 +152,7 @@
         <li><b>Orange:</b> affected by at least one medium severity vulnerability.</li>  
         <li><b>Yellow:</b> affected by at least one low severity vulnerability.</li>  
         <li><b>Green:</b> affected by at least one informational severity vulnerability.</li>  
-        <li><b>Light blue:</b> not directly affected but has at least one vulnerable dependency.</li>  
+        <li><b>Light blue:</b> not directly affected by vulnerabilities but has at least one vulnerable dependency.</li>  
         <li><b>Grey:</b> neither the component nor its dependencies are affected by any vulnerabilities.</li>
     </ul>
     The chart is interactive:  
@@ -328,14 +333,22 @@
                       }
                     ],
                     orderCellsTop: true,
-                    "autoWidth": true,
+                    autoWidth: true,
                     scrollX: true
+                    
                   });
 
                 $('#components-table thead input').on('keyup change', function () {
                     let columnIndex = $(this).parent().index();
                     table.column(columnIndex).search(this.value).draw();
                 });
+
+                $('.search-in-table').on('keyup change', function () {
+                    let columnIndex = $(this).parent().index();
+                    table.column(columnIndex).search(this.value).draw();
+                });
+
+                
 
                 //table.columns.adjust();
             }

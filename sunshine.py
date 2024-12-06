@@ -720,7 +720,24 @@ def double_check_if_all_components_were_taken_into_account(components, echart_da
 
 def component_badge_for_table(component):
     component_on_display = ""
-    component_on_display += '<span class="badge text-bg-secondary">' + html.escape(component["name"])
+
+    if component["max_vulnerability_severity"] == "critical":
+        badge_class = 'bg-dark-red'
+    elif component["max_vulnerability_severity"] == "high":
+        badge_class = 'bg-danger'
+    elif component["max_vulnerability_severity"] == "medium":
+        badge_class = 'bg-orange'
+    elif component["max_vulnerability_severity"] == "low":
+        badge_class = 'bg-yellow'
+    elif component["max_vulnerability_severity"] in ["information", "info"]:
+        badge_class = 'bg-success'
+    elif component["max_vulnerability_severity"] == "clean":
+        if component["has_transitive_vulnerabilities"]:
+            badge_class = 'bg-light-blue'
+        else:
+            badge_class = 'bg-secondary'
+
+    component_on_display += f'<span class="badge {badge_class}">' + html.escape(component["name"])
     if component["version"] != "-":
         component_on_display += " " + html.escape(component["version"])
     return component_on_display + "</span>"
@@ -757,12 +774,12 @@ def build_table_content(components):
             <th>License</th>
         </tr>
         <tr>
-            <th><input type="text" placeholder="Search Component" class="form-control"></th>
-            <th><input type="text" placeholder="Search Depends on" class="form-control"></th>
-            <th><input type="text" placeholder="Search Dependency of" class="form-control"></th>
-            <th><input type="text" placeholder="Search Direct vulnerabilities" class="form-control"></th>
-            <th><input type="text" placeholder="Search Transitive vulnerabilities" class="form-control"></th>
-            <th><input type="text" placeholder="Search License" class="form-control"></th>
+            <th><input type="text" placeholder="Search Component" class="form-control search-in-table"></th>
+            <th><input type="text" placeholder="Search Depends on" class="form-control search-in-table"></th>
+            <th><input type="text" placeholder="Search Dependency of" class="form-control search-in-table"></th>
+            <th><input type="text" placeholder="Search Direct vulnerabilities" class="form-control search-in-table"></th>
+            <th><input type="text" placeholder="Search Transitive vulnerabilities" class="form-control search-in-table"></th>
+            <th><input type="text" placeholder="Search License" class="form-control search-in-table"></th>
         </tr>
     </thead>"""]
     rows.append("<tbody>")
