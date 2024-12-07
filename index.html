@@ -413,7 +413,9 @@
                 renderChart(JSON.parse(echartData));
                 writeToLog("Chart built!");
                 let tableContent = pyodideInstance.globals.get('OUTPUT_TABLE_DATA');
+                writeToLog("Building table...");
                 renderTable(tableContent);
+                writeToLog("Table built!");
                 writeToLog("Finished.");
             }
         }

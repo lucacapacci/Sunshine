@@ -251,9 +251,11 @@ def create_fake_component(bom_ref):
     return {"name": bom_ref,
             "version": "-",
             "type": "-",
+            "license": set(),
             "depends_on": set(),
             "dependency_of": set(),
             "vulnerabilities": [],
+            "transitive_vulnerabilities": [],
             "max_vulnerability_severity": "clean",
             "has_transitive_vulnerabilities": False,
             "visited": False}
@@ -452,6 +454,18 @@ def get_all_bom_refs(data):
     return bom_refs, meta_bom_ref_is_used
 
 
+def parse_licenses(component):
+    licenses = set()
+    if "licenses" in component:
+        for license in component["licenses"]:
+            if "license" in license:
+                if "id" in license["license"]:
+                    licenses.add(license["license"]["id"])
+                elif "name" in license["license"]:
+                    licenses.add(license["license"]["name"])
+    return licenses
+
+
 def parse_json_data(data):
     all_bom_refs, meta_bom_ref_is_used = get_all_bom_refs(data)
 
@@ -470,9 +484,11 @@ def parse_json_data(data):
                 new_component = {"name": component["name"],
                                  "version": component["version"] if "version" in component else "-",
                                  "type": component["type"] if "type" in component else "-",
+                                 "license": parse_licenses(component),
                                  "depends_on": set(),
                                  "dependency_of": set(),
                                  "vulnerabilities": [],
+                                 "transitive_vulnerabilities": [],
                                  "max_vulnerability_severity": "clean",
                                  "has_transitive_vulnerabilities": False,
                                  "visited": False}
@@ -485,9 +501,11 @@ def parse_json_data(data):
             new_component = {"name": component["name"],
                              "version": component["version"] if "version" in component else "-",
                              "type": component["type"] if "type" in component else "-",
+                             "license": parse_licenses(component),
                              "depends_on": set(),
                              "dependency_of": set(),
                              "vulnerabilities": [],
+                             "transitive_vulnerabilities": [],
                              "max_vulnerability_severity": "clean",
                              "has_transitive_vulnerabilities": False,
                              "visited": False}
@@ -501,9 +519,11 @@ def parse_json_data(data):
                     new_component = {"name": sub_component["name"],
                                      "version": sub_component["version"] if "version" in sub_component else "-",
                                      "type": sub_component["type"] if "type" in sub_component else "-",
+                                     "license": parse_licenses(sub_component),
                                      "depends_on": set(),
                                      "dependency_of": set(),
                                      "vulnerabilities": [],
+                                     "transitive_vulnerabilities": [],
                                      "max_vulnerability_severity": "clean",
                                      "has_transitive_vulnerabilities": False,
                                      "visited": False}
@@ -638,13 +658,18 @@ def determine_style(component):
         return STYLES[component["max_vulnerability_severity"]]
 
 
+def add_transitive_vulnerabilities_to_component(component, vulnerabilities):
+    for vulnerability in vulnerabilities:
+        if vulnerability not in component["transitive_vulnerabilities"]:
+            component["transitive_vulnerabilities"].append(vulnerability)
+
+
 def get_children(components, component, parents):
     children = []
     value = 0
     has_vulnerable_children_or_is_vulnerable = False
     if len(component["vulnerabilities"]) > 0:
         has_vulnerable_children_or_is_vulnerable = True
-        component["has_transitive_vulnerabilities"] = True
     for depends_on in component["depends_on"]:
         child_name = prepare_chart_element_name(components[depends_on])
         child_component = components[depends_on]
@@ -654,6 +679,8 @@ def get_children(components, component, parents):
             child_children, children_value, has_vulnerable_children_or_is_vulnerable = get_children(components, child_component, parents)
             if len(child_component["vulnerabilities"]) > 0 or child_component["has_transitive_vulnerabilities"] is True or has_vulnerable_children_or_is_vulnerable is True:
                 component["has_transitive_vulnerabilities"] = True
+                add_transitive_vulnerabilities_to_component(component, child_component["vulnerabilities"])
+                add_transitive_vulnerabilities_to_component(component, child_component["transitive_vulnerabilities"])
                 has_vulnerable_children_or_is_vulnerable = True
 
             value += children_value
@@ -668,7 +695,9 @@ def get_children(components, component, parents):
             for child_depends_on in child_component["depends_on"]:
                 if len(child_depends_on["vulnerabilities"]) > 0 or child_depends_on["has_transitive_vulnerabilities"] is True:
                     child_component["has_transitive_vulnerabilities"] = True
-                    break
+                    add_transitive_vulnerabilities_to_component(child_component, child_depends_on["vulnerabilities"])
+                    add_transitive_vulnerabilities_to_component(child_component, child_depends_on["transitive_vulnerabilities"])
+                
 
             children.append({"name": child_name,
                              "children": [],
@@ -690,6 +719,10 @@ def add_root_component(components, component, data, bom_ref):
 
     if has_vulnerable_children_or_is_vulnerable is True:
         component["has_transitive_vulnerabilities"] = True
+        for depends_on in component["depends_on"]:
+            child = components[depends_on]
+            add_transitive_vulnerabilities_to_component(component, child["vulnerabilities"])
+            add_transitive_vulnerabilities_to_component(component, child["transitive_vulnerabilities"])
 
     new_element = {"name": root_name,
                    "children": root_children,
@@ -743,9 +776,9 @@ def component_badge_for_table(component):
     return component_on_display + "</span>"
 
 
-def vulnerability_badge_for_table(component):
+def vulnerability_badge_for_table(component, key="vulnerabilities"):
     vulns = {}
-    for vulnerability in component["vulnerabilities"]:
+    for vulnerability in component[key]:
         if vulnerability["severity"] == "critical":
             badge_class = 'bg-dark-red'
         elif vulnerability["severity"] == "high":
@@ -769,8 +802,8 @@ def build_table_content(components):
             <th>Component</th>
             <th>Depends on</th>
             <th>Dependency of</th>
-            <th>Direct vulnerabilities</th>
-            <th>Transitive vulnerabilities</th>
+            <th>Direct <br>vulnerabilities</th>
+            <th>Transitive <br>vulnerabilities</th>
             <th>License</th>
         </tr>
         <tr>
@@ -820,9 +853,17 @@ def build_table_content(components):
             vulns_to_be_shown = vulnerability_badge_for_table(component)
             new_row += "<td>" + '<span style="display: none;">, </span><br>'.join(vulns_to_be_shown) + "</td>"
 
-        new_row += "<td>TODO TRANSITIVE VULNS</td>"
+        if len(component["transitive_vulnerabilities"]) == 0:
+            new_row += "<td>-</td>"
+        else:
+            vulns_to_be_shown = vulnerability_badge_for_table(component, key="transitive_vulnerabilities")
+            new_row += "<td>" + '<span style="display: none;">, </span><br>'.join(vulns_to_be_shown) + "</td>"
 
-        new_row += "<td>TODO LICENSES</td>"
+        if len(component["license"]) == 0:
+            new_row += "<td>-</td>"
+        else:
+            new_row += "<td>" + html.escape(', '.join(component["license"])) + "</td>"
+
 
         new_row += "</tr>\n"
 
