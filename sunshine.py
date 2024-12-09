@@ -2,6 +2,7 @@ import json
 import argparse
 import os
 import html
+import copy
 
 
 VERSION = "0.9"
@@ -339,6 +340,24 @@ def get_bom_ref(component_json, all_bom_refs):
                     custom_print(f"Match found: {potential_bom_ref}")
                     return potential_bom_ref
 
+        # another try with version not in the end of the string
+        number_of_results = 0
+        result = None
+        for potential_bom_ref in all_bom_refs:
+            guessed_name_01 = f'{component_json["name"]}@{component_json["version"]}'
+            guessed_name_02 = f'{component_json["name"]}::{component_json["version"]}'
+            guessed_name_03 = f'{component_json["name"]}:{component_json["version"]}'
+
+            for test in [guessed_name_01, guessed_name_02, guessed_name_03]:
+                if f"/{test}:" in bom_ref:
+                    number_of_results += 1
+                    result = potential_bom_ref
+                elif f":{test}:" in bom_ref:
+                    number_of_results += 1
+                    result = potential_bom_ref
+        if number_of_results == 1:  # I want just one result, otherwise it means the sbom is ambiguous and I can't make any educated guess
+            return result
+
         custom_print(f"Match not found. I'll create a fake one.")
         bom_ref = f"{hash(json.dumps(component_json, sort_keys=True, cls=SetEncoder))}"
     return bom_ref
@@ -380,6 +399,25 @@ def normalize_bom_ref(bom_refs, bom_ref, only_valid_components=True):
             if bom_ref.endswith(f":{test}:"):
                 return bom_ref
 
+    # another try with version not in the end of the string
+    number_of_results = 0
+    result = None
+    for component_bom_ref, component_data in bom_refs.items():
+        guessed_name_01 = f'{component_data["name"]}@{component_data["version"]}'
+        guessed_name_02 = f'{component_data["name"]}::{component_data["version"]}'
+        guessed_name_03 = f'{component_data["name"]}:{component_data["version"]}'
+
+        for test in [guessed_name_01, guessed_name_02, guessed_name_03]:
+            if f"/{test}:" in bom_ref:
+                number_of_results += 1
+                result = component_bom_ref
+            elif f":{test}:" in bom_ref:
+                number_of_results += 1
+                result = component_bom_ref
+    if number_of_results == 1:  # I want just one result, otherwise it means the sbom is ambiguous and I can't make any educated guess
+        return result
+
+    # final try: without version
     number_of_results = 0
     result = None
     for component_bom_ref, component_data in bom_refs.items():
@@ -463,7 +501,7 @@ def parse_licenses(component):
                     licenses.add(license["license"]["id"])
                 elif "name" in license["license"]:
                     licenses.add(license["license"]["name"])
-    return licenses
+    return sorted(list(licenses))
 
 
 def parse_json_data(data):
@@ -632,7 +670,8 @@ def prepare_chart_element_name(component):
         name = f'{html.escape(component["name"])}'
 
     if len(component["vulnerabilities"]) > 0:
-        name += "<br>"
+        name += "<br><br>Vulnerabilities:<br>"
+
         vulns = {}
         for vulnerability in component["vulnerabilities"]:
             vulns[f'<li>{html.escape(vulnerability["id"])} ({html.escape(vulnerability["severity"].title())})</li>'] = VALID_SEVERITIES[vulnerability["severity"]]
@@ -646,6 +685,22 @@ def prepare_chart_element_name(component):
 
 
         name += "".join(vulns_to_be_shown)
+
+    if len(component["license"]) > 0:
+        if len(component["vulnerabilities"]) == 0:
+            name += "<br>"
+        name += "<br>License:<br>"
+
+        licenses = []
+        for license in component["license"]:
+            licenses.append(f'<li>{html.escape(license)}</li>')
+
+        if len(licenses) > 10:
+            licenses = licenses[:10]
+            licenses.append("<li>...</li>")
+
+        name += "".join(licenses)
+
     return name
 
 
@@ -671,12 +726,13 @@ def get_children(components, component, parents):
     if len(component["vulnerabilities"]) > 0:
         has_vulnerable_children_or_is_vulnerable = True
     for depends_on in component["depends_on"]:
+        parents_branch = copy.deepcopy(parents)
         child_name = prepare_chart_element_name(components[depends_on])
         child_component = components[depends_on]
         child_component["visited"] = True
-        if depends_on not in parents:  # this is done to avoid infinite recursion in case of circular dependencies
-            parents.append(depends_on)
-            child_children, children_value, has_vulnerable_children_or_is_vulnerable = get_children(components, child_component, parents)
+        if depends_on not in parents_branch:  # this is done to avoid infinite recursion in case of circular dependencies
+            parents_branch.append(depends_on)
+            child_children, children_value, has_vulnerable_children_or_is_vulnerable = get_children(components, child_component, parents_branch)
             if len(child_component["vulnerabilities"]) > 0 or child_component["has_transitive_vulnerabilities"] is True or has_vulnerable_children_or_is_vulnerable is True:
                 component["has_transitive_vulnerabilities"] = True
                 add_transitive_vulnerabilities_to_component(component, child_component["vulnerabilities"])
@@ -691,8 +747,10 @@ def get_children(components, component, parents):
                              "itemStyle": determine_style(child_component)
                              })
         else:
+            custom_print(f"WARNING: component with bom-ref {depends_on} may be a circular dependency.")
             value += 1
             for child_depends_on in child_component["depends_on"]:
+                child_depends_on = components[child_depends_on]
                 if len(child_depends_on["vulnerabilities"]) > 0 or child_depends_on["has_transitive_vulnerabilities"] is True:
                     child_component["has_transitive_vulnerabilities"] = True
                     add_transitive_vulnerabilities_to_component(child_component, child_depends_on["vulnerabilities"])
@@ -796,6 +854,13 @@ def vulnerability_badge_for_table(component, key="vulnerabilities"):
     return vulns_to_be_shown
 
 
+def license_badge_for_table(component):
+    licenses = []
+    for license in component["license"]:
+        licenses.append(f'<span class="badge border border-dark text-dark">{html.escape(license)}</span>')
+    return licenses
+
+
 def build_table_content(components):
     rows = ["""<thead>
         <tr>
@@ -862,8 +927,8 @@ def build_table_content(components):
         if len(component["license"]) == 0:
             new_row += "<td>-</td>"
         else:
-            new_row += "<td>" + html.escape(', '.join(component["license"])) + "</td>"
-
+            licenses_to_be_shown = license_badge_for_table(component)
+            new_row += "<td>" + '<span style="display: none;">, </span><br>'.join(licenses_to_be_shown) + "</td>"
 
         new_row += "</tr>\n"
 
